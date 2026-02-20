@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gen Labs ASCII Test</title>
+  </head>
+  <body>
+    <div class="ui">
+      <header class="nav">
+        <div class="brand">
+          <img class="brand-logo" src="/svgs/logo.svg" alt="GEN Labs" />
+        </div>
+
+        <button class="nav-menu-btn" type="button" aria-label="Open menu">
+          <img class="nav-menu-icon" src="/svgs/menu.svg" alt="" aria-hidden="true" />
+        </button>
+      </header>
+
+      <section class="panel panel-hero">
+        <div class="hero-inner">
+          <h1 class="hero-title">
+            The <span class="accent">infrastructure edge</span> for<br />
+            global financial markets
+          </h1>
+
+          <button class="explore-btn" type="button">
+            <span class="dot"></span>
+            Explore
+          </button>
+        </div>
+      </section>
+
+      <section class="panel panel-under">
+        <div class="under-inner">
+          <p class="under-copy">
+            The Grid dissolves the silos and trade-offs that kept markets off-chain,
+            delivering performance, compliance, and full composability in a single open network.
+            This is where markets move freely on-chain by design, without compromise.
+          </p>
+
+          <p class="under-highlight">
+            We are not building another L1. We are building something far more ambitious.
+          </p>
+        </div>
+      </section>
+
+      <section class="panel panel-converge" aria-hidden="true">
+        <div class="converge-labels">
+          <p class="converge-label converge-label-left">Decentralized</p>
+          <p class="converge-label converge-label-right">Centralized</p>
+        </div>
+
+        <div class="converge-hover-layer" aria-hidden="true">
+          <div class="converge-hover-card converge-hover-card-left">
+            <p class="converge-hover-line">[ Consensus-based security ]</p>
+            <p class="converge-hover-line">[ Permissionless open network ]</p>
+            <p class="converge-hover-line">[ Smart contract mechanism ]</p>
+            <p class="converge-hover-line">[ Immutable audit ]</p>
+          </div>
+
+          <div class="converge-hover-card converge-hover-card-right">
+            <p class="converge-hover-line">[ TPS/Scalability ]</p>
+            <p class="converge-hover-line">[ Zero latency ]</p>
+            <p class="converge-hover-line">[ First-come first-serve ]</p>
+            <p class="converge-hover-line">[ Predictable cost ]</p>
+          </div>
+        </div>
+
+        <p class="converge-final">New and first of its kind.</p>
+      </section>
+
+    </div>
+
+    <div id="scroll-spacer"></div>
+    <canvas id="ascii"></canvas>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
