@@ -1,11 +1,8 @@
-@import "@fontsource/stack-sans-notch";
-
-
 /* Ensure canvas can sit behind */
 html, body {
   height: 100%;
   margin: 0;
-  font-family: "Stack Sans Notch", system-ui, sans-serif;
+  font-family: inherit;
 }
 
 .hero-title {
@@ -100,11 +97,30 @@ html, body {
   width: auto;
 }
 
-.panel {
+.grid-stage {
+  position: relative;
+}
+
+.grid-stage-sticky {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#grid-stage-scroll {
+  height: 800vh;
+}
+
+.panel,
+.cc-hero,
+.cc-about,
+.cc-system {
   position: fixed;   /* was absolute */
   inset: 0;
   width: 100vw;
   height: 100vh;
+  z-index: 10;
 
   display: grid;
   place-items: center;
@@ -113,7 +129,8 @@ html, body {
 }
 
 
-.panel-hero {
+.panel-hero,
+.cc-hero {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -124,7 +141,9 @@ html, body {
 }
 
 /* Make the hero headline BIG */
-.panel-hero .hero-title {
+.panel-hero .hero-title,
+.cc-hero .hero-title,
+.cc-hero [data-text="hero-title"] {
   font-size: clamp(64px, 7vw, 120px);
   line-height: 0.95;
   letter-spacing: -0.03em;
@@ -133,7 +152,8 @@ html, body {
   margin: 200;            /* IMPORTANT: remove giant top margin */
 }
 
-.panel-under{
+.panel-under,
+.cc-about {
   position: absolute;
   inset: 0;
   display: grid;
@@ -153,7 +173,8 @@ html, body {
   gap: clamp(24px, 4vh, 56px);
 }
 
-.panel-converge {
+.panel-converge,
+.cc-system {
   position: absolute;
   inset: 0;
   z-index: 12;
@@ -442,4 +463,6 @@ html, body {
   width: 100%;
   height: 100%;
   display: block;
+  z-index: 1;
+  pointer-events: none;
 }

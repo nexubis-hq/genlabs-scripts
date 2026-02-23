@@ -1,12 +1,99 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import gsap from 'gsap'
-import './style.css'
+import gsapModule from 'gsap'
+import Lenis from 'lenis'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import GUI from 'lil-gui'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { tabDefinitions, defaultTabId } from '../tabs.js'
-gsap.registerPlugin(ScrollTrigger)
+import { ScrollTrigger as ScrollTriggerModule } from 'gsap/ScrollTrigger'
+import { tabDefinitions, defaultTabId } from './tabs.js'
+import { setupTeamSectionAnimations } from './team.js'
+
+const isWebflowPreviewHost = location.hostname.includes('.webflow.io') || location.hostname.endsWith('webflow.io')
+if (!isWebflowPreviewHost) {
+  import('./style.css')
+}
+
+const gsap = window.gsap || gsapModule
+const ScrollTrigger = window.ScrollTrigger || ScrollTriggerModule
+
+if (window.__GENLABS_MAIN_BOOTED__) {
+  throw new Error('GEN Labs main.js initialized more than once')
+}
+window.__GENLABS_MAIN_BOOTED__ = true
+
+if (ScrollTrigger) {
+  gsap.registerPlugin(ScrollTrigger)
+}
+
+let lenis = null
+
+function setupLenis() {
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (prefersReducedMotion) return
+
+  lenis = new Lenis({
+    duration: 1.0,
+    smoothWheel: true,
+    smoothTouch: false,
+    wheelMultiplier: 1,
+    touchMultiplier: 1,
+  })
+
+  lenis.on('scroll', () => {
+    ScrollTrigger?.update()
+  })
+
+  const raf = (time) => {
+    lenis.raf(time)
+    requestAnimationFrame(raf)
+  }
+
+  requestAnimationFrame(raf)
+  window.__GENLABS_LENIS__ = lenis
+}
+
+setupLenis()
+
+const moduleUrl = new URL(import.meta.url)
+
+function resolveAssetUrl(path) {
+  return new URL(path, moduleUrl).href
+}
+
+function pick(...selectors) {
+  return document.querySelector(selectors.join(', '))
+}
+
+const dom = {
+  panelHero: pick('.cc-hero', '.panel-hero'),
+  panelUnder: pick('.cc-about', '.panel-under'),
+  panelConverge: pick('.cc-benefits', '.cc-system', '.panel-converge'),
+}
+
+dom.underCopy = pick('[data-text="about-intro"]', '[data-text="about-into"]', '.under-copy', '.cc-about .h3.u-text-center:not(.u-text-primary)')
+dom.underHighlight = pick('[data-text="about-outro"]', '.under-highlight', '.cc-about .u-text-primary')
+
+const selectors = {
+  heroTitle: '[data-text="hero-title"], .hero-title',
+  panelHero: '.cc-hero, .panel-hero',
+  panelUnder: '.cc-about, .panel-under',
+  panelConverge: '.cc-benefits, .cc-system, .panel-converge',
+  underCopy: '[data-text="about-intro"], [data-text="about-into"], .under-copy, .cc-about .h3.u-text-center:not(.u-text-primary)',
+  underHighlight: '[data-text="about-outro"], .under-highlight, .cc-about .u-text-primary',
+}
+
+const stageTrigger = document.querySelector('#grid-stage') || document.querySelector('#grid-stage-scroll') || document.querySelector('#scroll-spacer') || document.body
+
+if (isWebflowPreviewHost) {
+  if ('scrollRestoration' in history) {
+    history.scrollRestoration = 'manual'
+  }
+  window.scrollTo(0, 0)
+  window.addEventListener('load', () => {
+    window.scrollTo(0, 0)
+    requestAnimationFrame(() => window.scrollTo(0, 0))
+  }, { once: true })
+}
 
 
 
@@ -41,7 +128,7 @@ const ASCII = {
 
   contrast: 1.15,
   gamma: 0.9,
-  
+
 
   bg: '#ffffff',
   fg: '#125fee',      // your blue ASCII look
@@ -126,6 +213,9 @@ const sizes = { width: window.innerWidth, height: window.innerHeight }
  * ASCII Canvas (2D)
  */
 const asciiCanvas = document.querySelector('#ascii')
+if (!asciiCanvas) {
+  throw new Error('Missing #ascii canvas in DOM')
+}
 const ctx = asciiCanvas.getContext('2d', { alpha: false })
 
 function setCanvasSize() {
@@ -298,7 +388,7 @@ function runNavScramble(link) {
 }
 
 function setupNavScramble() {
-  const links = document.querySelectorAll('.nav-links a')
+  const links = document.querySelectorAll('.nav-links a, .nav-link.w-nav-link')
   links.forEach((link) => {
     link.dataset.scrambleText = link.textContent.trim()
 
@@ -314,7 +404,7 @@ function setupNavScramble() {
 setupNavScramble()
 
 function setupConvergeHoverCards() {
-  const panel = document.querySelector('.panel-converge')
+  const panel = document.querySelector(selectors.panelConverge)
   const leftLabel = panel?.querySelector('.converge-label-left')
   const rightLabel = panel?.querySelector('.converge-label-right')
   const leftCard = panel?.querySelector('.converge-hover-card-left')
@@ -531,9 +621,9 @@ function splitElementWords(root) {
 }
 
 const textWords = {
-  hero: splitElementWords(document.querySelector('.hero-title')),
-  underCopy: splitElementWords(document.querySelector('.under-copy')),
-  underHighlight: splitElementWords(document.querySelector('.under-highlight')),
+  hero: splitElementWords(document.querySelector(selectors.heroTitle)),
+  underCopy: splitElementWords(dom.underCopy),
+  underHighlight: splitElementWords(dom.underHighlight),
   convergeFinal: splitElementWords(document.querySelector('.converge-final')),
 }
 
@@ -549,9 +639,15 @@ if (textWords.hero.length) {
   })
 }
 
-gsap.set(textWords.underCopy, { y: 50, opacity: 0 })
-gsap.set(textWords.underHighlight, { y: 50, opacity: 0 })
-gsap.set(textWords.convergeFinal, { y: 42, opacity: 0 })
+if (textWords.underCopy.length) {
+  gsap.set(textWords.underCopy, { y: 50, opacity: 0 })
+}
+if (textWords.underHighlight.length) {
+  gsap.set(textWords.underHighlight, { y: 50, opacity: 0 })
+}
+if (textWords.convergeFinal.length) {
+  gsap.set(textWords.convergeFinal, { y: 42, opacity: 0 })
+}
 
 function setupExploreButton() {
   const exploreButton = document.querySelector('.explore-btn')
@@ -591,6 +687,7 @@ function setupExploreButton() {
 }
 
 setupExploreButton()
+setupTeamSectionAnimations({ gsap, ScrollTrigger })
 
 
 /**
@@ -918,12 +1015,14 @@ async function buildTabModel(tab) {
     return primitive
   }
 
-  if (!tabModelCache.has(model.url)) {
-    const loaded = await loadGLBScene(model.url)
-    tabModelCache.set(model.url, loaded)
+  const modelUrl = resolveAssetUrl(model.url)
+
+  if (!tabModelCache.has(modelUrl)) {
+    const loaded = await loadGLBScene(modelUrl)
+    tabModelCache.set(modelUrl, loaded)
   }
 
-  const cloned = cloneTabModel(tabModelCache.get(model.url))
+  const cloned = cloneTabModel(tabModelCache.get(modelUrl))
   fitModelToTarget(cloned, model.targetSize)
   return cloned
 }
@@ -991,7 +1090,7 @@ if (hasTabSwitcher) {
 }
 
 gltfLoader.load(
-  '/models/logo_separate.glb',
+  resolveAssetUrl('/models/logo_separate.glb'),
   (gltf) => {
     // Clear fallback / previous content
     logoGroup.clear()
@@ -1135,7 +1234,7 @@ gltfLoader.load(
     convergePivot.visible = false
 
     gltfLoader.load(
-      '/models/logo_split.glb',
+      resolveAssetUrl('/models/logo_split.glb'),
       (splitGltf) => {
         const splitRoot = splitGltf.scene
         splitRoot.updateMatrixWorld(true)
@@ -1192,283 +1291,303 @@ gltfLoader.load(
       (err) => console.error('Failed to load convergence logo:', err)
     )
 
-// -----------------------------
-// MASTER scroll timeline
-// -----------------------------
-if (window.__pageTL) {
-  window.__pageTL.scrollTrigger?.kill()
-  window.__pageTL.kill()
-  window.__pageTL = null
-}
+    // -----------------------------
+    // MASTER scroll timeline
+    // -----------------------------
+    if (window.__pageTL) {
+      window.__pageTL.scrollTrigger?.kill()
+      window.__pageTL.kill()
+      window.__pageTL = null
+    }
 
-// IMPORTANT: reset positions explicitly
-logoLeft.position.set(0, 0, 0)
-logoRight.position.set(0, 0, 0)
-logoLeft.scale.set(1, 1, 1)
-logoRight.scale.set(1, 1, 1)
-convergeLeft.position.set(0, 0, 0)
-convergeRight.position.set(0, 0, 0)
-convergePivot.rotation.set(0, 0, 0)
-convergeScaleState.value = CONVERGE_ENTRY_SCALE_FACTOR
-applyConvergeScale()
-convergeOpacity.value = 0
-applyConvergeOpacity()
-convergePivot.visible = false
-pivot.visible = true
-pivot.rotation.set(0, 0, 0)
-pivot.scale.setScalar(s)
+    // IMPORTANT: reset positions explicitly
+    logoLeft.position.set(0, 0, 0)
+    logoRight.position.set(0, 0, 0)
+    logoLeft.scale.set(1, 1, 1)
+    logoRight.scale.set(1, 1, 1)
+    convergeLeft.position.set(0, 0, 0)
+    convergeRight.position.set(0, 0, 0)
+    convergePivot.rotation.set(0, 0, 0)
+    convergeScaleState.value = CONVERGE_ENTRY_SCALE_FACTOR
+    applyConvergeScale()
+    convergeOpacity.value = 0
+    applyConvergeOpacity()
+    convergePivot.visible = false
+    pivot.visible = true
+    pivot.rotation.set(0, 0, 0)
+    pivot.scale.setScalar(s)
 
-pivot.updateMatrixWorld(true)
-const leftBounds = new THREE.Box3().setFromObject(logoLeft)
-const rightBounds = new THREE.Box3().setFromObject(logoRight)
+    pivot.updateMatrixWorld(true)
+    const leftBounds = new THREE.Box3().setFromObject(logoLeft)
+    const rightBounds = new THREE.Box3().setFromObject(logoRight)
 
-const leftSize = leftBounds.getSize(new THREE.Vector3())
-const rightSize = rightBounds.getSize(new THREE.Vector3())
-const averageHalfWidth = Math.max((leftSize.x + rightSize.x) * 0.5, size2.x * 0.35)
+    const leftSize = leftBounds.getSize(new THREE.Vector3())
+    const rightSize = rightBounds.getSize(new THREE.Vector3())
+    const averageHalfWidth = Math.max((leftSize.x + rightSize.x) * 0.5, size2.x * 0.35)
 
-const heroSplitLimitX = THREE.MathUtils.clamp(averageHalfWidth * 0.18, 0.38, 1.25)
-const heroSplitLimitY = THREE.MathUtils.clamp(heroSplitLimitX * 0.2, 0.05, 0.22)
+    const heroSplitLimitX = THREE.MathUtils.clamp(averageHalfWidth * 0.18, 0.38, 1.25)
+    const heroSplitLimitY = THREE.MathUtils.clamp(heroSplitLimitX * 0.2, 0.05, 0.22)
 
-const heroOffscreenL = new THREE.Vector3(-heroSplitLimitX, -heroSplitLimitY, 0)
-const heroOffscreenR = new THREE.Vector3(heroSplitLimitX, heroSplitLimitY, 0)
+    const heroOffscreenL = new THREE.Vector3(-heroSplitLimitX, -heroSplitLimitY, 0)
+    const heroOffscreenR = new THREE.Vector3(heroSplitLimitX, heroSplitLimitY, 0)
 
-const TIMING = {
-  heroSplitOut: 0.40,
-  copySwapStart: 0.32,
-  underOut: 0.58,
-  convergeIn: 0.64,
-  centralizedIn: 0.72,
-  convergeFadeIn: 0.10,
-  convergeGrowStart: 0.74,
-  labelOut: 0.87,
-  modelFadeOutStart: 0.955,
-  modelFadeOut: 0.035,
-  finalTextIn: 0.972,
-}
+    const TIMING = {
+      heroSplitOut: 0.40,
+      copySwapStart: 0.32,
+      underOut: 0.58,
+      convergeIn: 0.64,
+      centralizedIn: 0.72,
+      convergeFadeIn: 0.10,
+      convergeGrowStart: 0.74,
+      labelOut: 0.87,
+      modelFadeOutStart: 0.955,
+      modelFadeOut: 0.035,
+      finalTextIn: 0.972,
+    }
 
-let heroSpinPaused = false
+    let heroSpinPaused = false
 
-const tl = gsap.timeline({
-  scrollTrigger: {
-    trigger: '#scroll-spacer',
-    start: 'top top',
-    end: () => `+=${window.innerHeight * 8}`,
-    scrub: 1.8,
-    invalidateOnRefresh: true,
-    onUpdate: (self) => {
-      const shouldPause = self.progress >= TIMING.convergeIn
-      if (shouldPause === heroSpinPaused) return
-      heroSpinPaused = shouldPause
-      if (heroSpinPaused) heroRotateTween.pause()
-      else heroRotateTween.resume()
-    },
-  }
-})
+    const timelineConfig = ScrollTrigger
+      ? {
+        scrollTrigger: {
+          trigger: stageTrigger,
+          start: 'top top',
+          end: () => `+=${window.innerHeight * 8}`,
+          scrub: 0.8,
+          invalidateOnRefresh: true,
+          onUpdate: (self) => {
+            const shouldPause = self.progress >= TIMING.convergeIn
+            if (shouldPause === heroSpinPaused) return
+            heroSpinPaused = shouldPause
+            if (heroSpinPaused) heroRotateTween.pause()
+            else heroRotateTween.resume()
+          },
+        }
+      }
+      : {}
 
-
-// -----------------------------
-// TEXT TIMING (0–30% in, 50% switch, >50% out)
-// -----------------------------
-
-// --- initial states (bulletproof) ---
-gsap.set('.panel-hero', { autoAlpha: 1, y: 0 })
-gsap.set('.panel-under', { autoAlpha: 0, y: 40 })
-gsap.set('.under-copy', { autoAlpha: 1 })
-gsap.set('.under-highlight', { autoAlpha: 1 })
-gsap.set('.panel-converge', { autoAlpha: 0 })
-gsap.set('.converge-label', { autoAlpha: 0, y: 18 })
-gsap.set('.converge-hover-card', { autoAlpha: 0, scale: 0.96 })
-gsap.set('.converge-final', { autoAlpha: 0 })
-
-// 0% -> 15% : hero OUT (fully gone by 15%)
-tl.to('.panel-hero', {
-  autoAlpha: 0,
-  y: -50,
-  ease: 'none',
-  duration: 0.12
-}, 0.00)
-
-// 0% -> 30% : under panel IN + grid text readable
-tl.to('.panel-under', {
-  autoAlpha: 1,
-  y: 0,
-  ease: 'none',
-  duration: 0.22
-}, 0.00)
-
-tl.to(textWords.underCopy, {
-  y: 0,
-  opacity: 1,
-  ease: 'power2.out',
-  duration: 0.16,
-  stagger: 0.004,
-}, 0.01)
-
-// 30% -> 50% : HOLD (do nothing)
-// (we create “hold” by simply not animating anything in this window)
-
-// Mid-scroll: highlight line appears beneath the main copy
-
-tl.to(textWords.underHighlight, {
-  y: 0,
-  opacity: 1,
-  ease: 'power2.out',
-  duration: 0.14,
-  stagger: 0.01,
-}, TIMING.copySwapStart)
-
-// Under panel exits before convergence sequence
-tl.to('.panel-under', {
-  autoAlpha: 0,
-  y: -40,
-  ease: 'none',
-  duration: 0.06
-}, TIMING.underOut)
-
-tl.set('.panel-under', {
-  autoAlpha: 0,
-}, TIMING.convergeIn)
-
-// Convergence labels appear
-tl.to('.panel-converge', {
-  autoAlpha: 1,
-  ease: 'none',
-  duration: 0.02,
-}, TIMING.convergeIn)
-
-tl.to('.converge-label', {
-  autoAlpha: 0,
-  y: 18,
-  ease: 'none',
-  duration: 0.001,
-}, TIMING.convergeIn)
-
-tl.to('.converge-label-left', {
-  autoAlpha: 1,
-  y: 0,
-  ease: 'power2.out',
-  duration: 0.08,
-}, TIMING.convergeIn)
-
-tl.to('.converge-label-right', {
-  autoAlpha: 1,
-  y: 0,
-  ease: 'power2.out',
-  duration: 0.08,
-}, TIMING.centralizedIn)
+    const tl = gsap.timeline(timelineConfig)
 
 
-// Logo halves split outward during the hero phase
-tl.to(logoLeft.position, {
-  x: heroOffscreenL.x, y: heroOffscreenL.y, z: heroOffscreenL.z,
-  ease: 'none',
-  duration: TIMING.heroSplitOut
-}, 0.0)
+    // -----------------------------
+    // TEXT TIMING (0–30% in, 50% switch, >50% out)
+    // -----------------------------
 
-tl.to(logoRight.position, {
-  x: heroOffscreenR.x, y: heroOffscreenR.y, z: heroOffscreenR.z,
-  ease: 'none',
-  duration: TIMING.heroSplitOut
-}, 0.0)
+    const hasConvergeLabels = Boolean(document.querySelector('.converge-label-left') && document.querySelector('.converge-label-right'))
+    const hasConvergeCards = Boolean(document.querySelector('.converge-hover-card'))
+    const hasConvergeFinalLine = Boolean(document.querySelector('.converge-final'))
 
-// Hero logo rotates 45deg as it goes off-frame
-tl.to(pivot.rotation, {
-  z: Math.PI * 0.25,
-  ease: 'power2.out',
-  duration: 0.08,
-}, TIMING.underOut)
+    // --- initial states (bulletproof) ---
+    gsap.set(selectors.panelHero, { autoAlpha: 1, y: 0 })
+    gsap.set(selectors.panelUnder, { autoAlpha: 0, y: 40 })
+    gsap.set(selectors.underCopy, { autoAlpha: 1 })
+    gsap.set(selectors.underHighlight, { autoAlpha: 1 })
+    gsap.set(selectors.panelConverge, { autoAlpha: 0 })
+    if (hasConvergeLabels) gsap.set('.converge-label', { autoAlpha: 0, y: 18 })
+    if (hasConvergeCards) gsap.set('.converge-hover-card', { autoAlpha: 0, scale: 0.96 })
+    if (hasConvergeFinalLine) gsap.set('.converge-final', { autoAlpha: 0 })
 
-// === CONVERGENCE LOGO: static split model fades in with labels ===
-const phaseHandoff = { value: 0 }
-tl.to(phaseHandoff, {
-  value: 1,
-  duration: 0.001,
-  ease: 'none',
-  onUpdate: () => {
-    const useConvergenceLogo = phaseHandoff.value > 0.5
-    pivot.visible = !useConvergenceLogo
-    convergePivot.visible = useConvergenceLogo
-  },
-}, TIMING.convergeIn)
+    // 0% -> 15% : hero OUT (fully gone by 15%)
+    tl.to(selectors.panelHero, {
+      autoAlpha: 0,
+      y: -50,
+      ease: 'none',
+      duration: 0.12
+    }, 0.00)
 
-tl.to(convergeOpacity, {
-  value: 1,
-  ease: 'none',
-  duration: TIMING.convergeFadeIn,
-  onUpdate: applyConvergeOpacity,
-}, TIMING.convergeIn)
+    // 0% -> 30% : under panel IN + grid text readable
+    tl.to(selectors.panelUnder, {
+      autoAlpha: 1,
+      y: 0,
+      ease: 'none',
+      duration: 0.22
+    }, 0.00)
 
-const convergeGrowToFadeDuration = Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart)
-const convergeFadeScaleTarget = CONVERGE_GROW_SCALE_FACTOR * 1.35
+    if (textWords.underCopy.length) {
+      tl.to(textWords.underCopy, {
+        y: 0,
+        opacity: 1,
+        ease: 'power2.out',
+        duration: 0.16,
+        stagger: 0.004,
+      }, 0.01)
+    }
 
-tl.to(convergeScaleState, {
-  value: CONVERGE_GROW_SCALE_FACTOR,
-  ease: 'power3.in',
-  duration: convergeGrowToFadeDuration,
-  onUpdate: applyConvergeScale,
-}, TIMING.convergeGrowStart)
+    // 30% -> 50% : HOLD (do nothing)
+    // (we create “hold” by simply not animating anything in this window)
 
-tl.to(convergeScaleState, {
-  value: convergeFadeScaleTarget,
-  ease: 'none',
-  duration: Math.max(0.001, TIMING.modelFadeOut),
-  onUpdate: applyConvergeScale,
-}, TIMING.modelFadeOutStart)
+    // Mid-scroll: highlight line appears beneath the main copy
 
-tl.to({}, {
-  duration: 0.001,
-  onStart: () => {
-    controls.target.set(0, 0, 0)
-    controls.update()
-    camera.lookAt(0, 0, 0)
-  },
-  onReverseComplete: () => {
-    controls.target.set(0, 0, 0)
-    controls.update()
-    camera.lookAt(0, 0, 0)
-  },
-}, TIMING.convergeIn)
+    if (textWords.underHighlight.length) {
+      tl.to(textWords.underHighlight, {
+        y: 0,
+        opacity: 1,
+        ease: 'power2.out',
+        duration: 0.14,
+        stagger: 0.01,
+      }, TIMING.copySwapStart)
+    }
 
-tl.to('.converge-hover-card', {
-  autoAlpha: 0,
-  scale: 0.96,
-  ease: 'none',
-  duration: 0.03,
-  overwrite: true,
-}, TIMING.labelOut)
+    // Under panel exits before convergence sequence
+    tl.to(selectors.panelUnder, {
+      autoAlpha: 0,
+      y: -40,
+      ease: 'none',
+      duration: 0.06
+    }, TIMING.underOut)
 
-tl.to(convergeOpacity, {
-  value: 0,
-  ease: 'power2.out',
-  duration: TIMING.modelFadeOut,
-  onUpdate: applyConvergeOpacity,
-}, TIMING.modelFadeOutStart)
+    tl.set(selectors.panelUnder, {
+      autoAlpha: 0,
+    }, TIMING.convergeIn)
 
-// Final message reveal
-tl.to('.converge-final', {
-  autoAlpha: 1,
-  ease: 'none',
-  duration: 0.05,
-}, TIMING.finalTextIn)
+    // Convergence labels appear
+    tl.to(selectors.panelConverge, {
+      autoAlpha: 1,
+      ease: 'none',
+      duration: 0.02,
+    }, TIMING.convergeIn)
 
-tl.to(textWords.convergeFinal, {
-  y: 0,
-  opacity: 1,
-  ease: 'power3.out',
-  duration: 0.08,
-  stagger: 0.02,
-}, TIMING.finalTextIn)
+    if (hasConvergeLabels) {
+      tl.to('.converge-label', {
+        autoAlpha: 0,
+        y: 18,
+        ease: 'none',
+        duration: 0.001,
+      }, TIMING.convergeIn)
 
-window.__pageTL = tl
-ScrollTrigger.refresh()
+      tl.to('.converge-label-left', {
+        autoAlpha: 1,
+        y: 0,
+        ease: 'power2.out',
+        duration: 0.08,
+      }, TIMING.convergeIn)
 
-if (activeTabId) {
-  controls.target.copy(tabModelRoot.position)
-  controls.update()
-}
+      tl.to('.converge-label-right', {
+        autoAlpha: 1,
+        y: 0,
+        ease: 'power2.out',
+        duration: 0.08,
+      }, TIMING.centralizedIn)
+    }
 
 
-    
+    // Logo halves split outward during the hero phase
+    tl.to(logoLeft.position, {
+      x: heroOffscreenL.x, y: heroOffscreenL.y, z: heroOffscreenL.z,
+      ease: 'none',
+      duration: TIMING.heroSplitOut
+    }, 0.0)
+
+    tl.to(logoRight.position, {
+      x: heroOffscreenR.x, y: heroOffscreenR.y, z: heroOffscreenR.z,
+      ease: 'none',
+      duration: TIMING.heroSplitOut
+    }, 0.0)
+
+    // Hero logo rotates 45deg as it goes off-frame
+    tl.to(pivot.rotation, {
+      z: Math.PI * 0.25,
+      ease: 'power2.out',
+      duration: 0.08,
+    }, TIMING.underOut)
+
+    // === CONVERGENCE LOGO: static split model fades in with labels ===
+    const phaseHandoff = { value: 0 }
+    tl.to(phaseHandoff, {
+      value: 1,
+      duration: 0.001,
+      ease: 'none',
+      onUpdate: () => {
+        const useConvergenceLogo = phaseHandoff.value > 0.5
+        pivot.visible = !useConvergenceLogo
+        convergePivot.visible = useConvergenceLogo
+      },
+    }, TIMING.convergeIn)
+
+    tl.to(convergeOpacity, {
+      value: 1,
+      ease: 'none',
+      duration: TIMING.convergeFadeIn,
+      onUpdate: applyConvergeOpacity,
+    }, TIMING.convergeIn)
+
+    const convergeGrowToFadeDuration = Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart)
+    const convergeFadeScaleTarget = CONVERGE_GROW_SCALE_FACTOR * 1.35
+
+    tl.to(convergeScaleState, {
+      value: CONVERGE_GROW_SCALE_FACTOR,
+      ease: 'power3.in',
+      duration: convergeGrowToFadeDuration,
+      onUpdate: applyConvergeScale,
+    }, TIMING.convergeGrowStart)
+
+    tl.to(convergeScaleState, {
+      value: convergeFadeScaleTarget,
+      ease: 'none',
+      duration: Math.max(0.001, TIMING.modelFadeOut),
+      onUpdate: applyConvergeScale,
+    }, TIMING.modelFadeOutStart)
+
+    tl.to({}, {
+      duration: 0.001,
+      onStart: () => {
+        controls.target.set(0, 0, 0)
+        controls.update()
+        camera.lookAt(0, 0, 0)
+      },
+      onReverseComplete: () => {
+        controls.target.set(0, 0, 0)
+        controls.update()
+        camera.lookAt(0, 0, 0)
+      },
+    }, TIMING.convergeIn)
+
+    if (hasConvergeCards) {
+      tl.to('.converge-hover-card', {
+        autoAlpha: 0,
+        scale: 0.96,
+        ease: 'none',
+        duration: 0.03,
+        overwrite: true,
+      }, TIMING.labelOut)
+    }
+
+    tl.to(convergeOpacity, {
+      value: 0,
+      ease: 'power2.out',
+      duration: TIMING.modelFadeOut,
+      onUpdate: applyConvergeOpacity,
+    }, TIMING.modelFadeOutStart)
+
+    // Final message reveal
+    if (hasConvergeFinalLine) {
+      tl.to('.converge-final', {
+        autoAlpha: 1,
+        ease: 'none',
+        duration: 0.05,
+      }, TIMING.finalTextIn)
+    }
+
+    if (textWords.convergeFinal.length) {
+      tl.to(textWords.convergeFinal, {
+        y: 0,
+        opacity: 1,
+        ease: 'power3.out',
+        duration: 0.08,
+        stagger: 0.02,
+      }, TIMING.finalTextIn)
+    }
+
+    window.__pageTL = tl
+    ScrollTrigger?.refresh()
+
+    if (activeTabId) {
+      controls.target.copy(tabModelRoot.position)
+      controls.update()
+    }
+
+
+
   },
   undefined,
   (error) => console.error('Failed to load GLB:', error)
@@ -1563,49 +1682,49 @@ function renderASCII() {
   // We render characters spaced by a “cell size” based on cols.
   const cellH = rebuildRenderTarget.cellH
 
-// Make the font size follow the cell height (prevents squish)
-const fontPx = Math.max(8, Math.floor(cellH * ASCII.fontScale))
-ctx.font = `${fontPx}px ${ASCII.fontFamily}`
+  // Make the font size follow the cell height (prevents squish)
+  const fontPx = Math.max(8, Math.floor(cellH * ASCII.fontScale))
+  ctx.font = `${fontPx}px ${ASCII.fontFamily}`
 
-ctx.textAlign = 'left'
+  ctx.textAlign = 'left'
 
-// Measure glyph width and scale X so the ASCII grid fills the viewport exactly
-const glyphW = ctx.measureText('M').width
-const scaleX = rebuildRenderTarget.cellW / glyphW
+  // Measure glyph width and scale X so the ASCII grid fills the viewport exactly
+  const glyphW = ctx.measureText('M').width
+  const scaleX = rebuildRenderTarget.cellW / glyphW
 
-// IMPORTANT: background fill should be unscaled
-// so do it BEFORE scaling, then scale only the text drawing
-ctx.save()
-ctx.scale(scaleX, 1)
+  // IMPORTANT: background fill should be unscaled
+  // so do it BEFORE scaling, then scale only the text drawing
+  ctx.save()
+  ctx.scale(scaleX, 1)
 
-// Draw row by row (x is in "unscaled" coords, but scaleX makes it fit)
-for (let y = 0; y < h; y++) {
-  let row = ''
-  for (let x = 0; x < w; x++) {
-    const yy = (h - 1 - y) // flip vertically
-const i = (yy * w + x) * 4
+  // Draw row by row (x is in "unscaled" coords, but scaleX makes it fit)
+  for (let y = 0; y < h; y++) {
+    let row = ''
+    for (let x = 0; x < w; x++) {
+      const yy = (h - 1 - y) // flip vertically
+      const i = (yy * w + x) * 4
 
 
-    const r = pixelBuffer[i] / 255
-    const g = pixelBuffer[i + 1] / 255
-    const b = pixelBuffer[i + 2] / 255
+      const r = pixelBuffer[i] / 255
+      const g = pixelBuffer[i + 1] / 255
+      const b = pixelBuffer[i + 2] / 255
 
-    let v = luminance(r, g, b)
-    v = applyContrast(v, ASCII.contrast)
-    v = applyGamma(v, ASCII.gamma)
+      let v = luminance(r, g, b)
+      v = applyContrast(v, ASCII.contrast)
+      v = applyGamma(v, ASCII.gamma)
 
-    if (ASCII.invert) v = 1 - v
+      if (ASCII.invert) v = 1 - v
 
-    const idx = Math.floor(v * (rampLen - 1))
-    row += ramp[idx]
+      const idx = Math.floor(v * (rampLen - 1))
+      row += ramp[idx]
+    }
+
+    const lineH = Math.max(rebuildRenderTarget.cellH, fontPx * 1.05)
+    ctx.fillText(row, 0, y * lineH)
   }
 
-  const lineH = Math.max(rebuildRenderTarget.cellH, fontPx * 1.05)
-  ctx.fillText(row, 0, y * lineH)
-}
-
-ctx.restore()
-return
+  ctx.restore()
+  return
 }
 
 /**
@@ -1630,7 +1749,7 @@ window.addEventListener('resize', () => {
 
   window.__refreshConvergeScale?.()
 
-  ScrollTrigger.refresh()
+  ScrollTrigger?.refresh()
 
   if (st && progressBeforeResize !== null) {
     const targetScroll = st.start + (st.end - st.start) * progressBeforeResize
@@ -1660,27 +1779,27 @@ const tick = () => {
   bgUniforms.uTime.value = elapsedTime
 
   // Cursor overlay update (damped)
-if (mouse.active) {
-  // target position (dot sits slightly above the real cursor)
-  const targetX = mouse.x + dotOffset.x
-  const targetY = mouse.y + dotOffset.y
+  if (mouse.active) {
+    // target position (dot sits slightly above the real cursor)
+    const targetX = mouse.x + dotOffset.x
+    const targetY = mouse.y + dotOffset.y
 
-  // damping (lerp)
-  smoothX += (targetX - smoothX) * damping
-  smoothY += (targetY - smoothY) * damping
+    // damping (lerp)
+    smoothX += (targetX - smoothX) * damping
+    smoothY += (targetY - smoothY) * damping
 
-  // dot follows smoothed position
-  cursor.style.left = `${smoothX}px`
-  cursor.style.top = `${smoothY}px`
+    // dot follows smoothed position
+    cursor.style.left = `${smoothX}px`
+    cursor.style.top = `${smoothY}px`
 
-  // label sits slightly to the right + above the dot
-  cursorLabel.style.left = `${smoothX + cursorOffset.x}px`
-  cursorLabel.style.top = `${smoothY + cursorOffset.y}px`
+    // label sits slightly to the right + above the dot
+    cursorLabel.style.left = `${smoothX + cursorOffset.x}px`
+    cursorLabel.style.top = `${smoothY + cursorOffset.y}px`
 
-  // only show x/y
-  cursorLabel.textContent = `x:${smoothX.toFixed(3)}  y:${smoothY.toFixed(3)}`
+    // only show x/y
+    cursorLabel.textContent = `x:${smoothX.toFixed(3)}  y:${smoothY.toFixed(3)}`
 
-}
+  }
 
 
 
