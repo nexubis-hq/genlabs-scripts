@@ -246,3 +246,76 @@ export function setupGridAscii() {
   requestAnimationFrame(frame)
   return { resize }
 }
+
+export function setupGridStackMouseFollow() {
+  const stack = document.querySelector('[data-component="grid-stack"]')
+  if (!stack) return null
+
+  const section = stack.closest('.section.cc-on-grid') || stack
+  const items = Array.from(stack.querySelectorAll('img, .grid_icon-preview'))
+  if (!items.length) return null
+
+  const centerIndex = (items.length - 1) * 0.5
+  const maxX = 34
+  const maxY = 24
+
+  const state = {
+    tx: 0,
+    ty: 0,
+    x: 0,
+    y: 0,
+    active: false,
+  }
+
+  items.forEach((item) => {
+    item.style.willChange = 'transform'
+  })
+
+  const apply = () => {
+    state.x += (state.tx - state.x) * 0.14
+    state.y += (state.ty - state.y) * 0.14
+
+    items.forEach((item, i) => {
+      const offset = i - centerIndex
+      const influence = offset
+      const x = state.x * influence * 1.05
+      const y = state.y * influence * 0.78
+      item.style.transform = `translate3d(${x}px, ${y}px, 0)`
+    })
+
+    requestAnimationFrame(apply)
+  }
+
+  const onMove = (event) => {
+    if (event.pointerType === 'touch') return
+    const rect = section.getBoundingClientRect()
+    const nx = clamp((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1)
+    const ny = clamp((event.clientY - rect.top) / Math.max(rect.height, 1), 0, 1)
+
+    // Opposite direction for stacked feel:
+    // cursor right => stack drifts left.
+    state.tx = -(nx - 0.5) * 2 * maxX
+    state.ty = -(ny - 0.5) * 2 * maxY
+    state.active = true
+  }
+
+  const onLeave = () => {
+    state.active = false
+    state.tx = 0
+    state.ty = 0
+  }
+
+  section.addEventListener('pointermove', onMove, { passive: true })
+  section.addEventListener('pointerleave', onLeave)
+  window.addEventListener('blur', onLeave)
+
+  requestAnimationFrame(apply)
+
+  return {
+    destroy() {
+      section.removeEventListener('pointermove', onMove)
+      section.removeEventListener('pointerleave', onLeave)
+      window.removeEventListener('blur', onLeave)
+    },
+  }
+}
