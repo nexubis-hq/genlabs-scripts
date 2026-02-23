@@ -7,6 +7,7 @@ import GUI from 'lil-gui'
 import { ScrollTrigger as ScrollTriggerModule } from 'gsap/ScrollTrigger'
 import { tabDefinitions, defaultTabId } from './tabs.js'
 import { setupTeamSectionAnimations } from './team.js'
+import { setupFeaturesSectionAnimation } from '../features.js'
 
 const isWebflowPreviewHost = location.hostname.includes('.webflow.io') || location.hostname.endsWith('webflow.io')
 if (!isWebflowPreviewHost) {
@@ -688,6 +689,27 @@ function setupExploreButton() {
 
 setupExploreButton()
 setupTeamSectionAnimations({ gsap, ScrollTrigger })
+setupFeaturesSectionAnimation({
+  gsap,
+  stageProgressRange: [0, 1],
+  getStageProgress: () => {
+    const stageProgress = window.__pageTL?.progress()
+    if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
+      return null
+    }
+
+    return stageProgress
+  },
+  getVisibilityProgress: () => {
+    const stageProgress = window.__pageTL?.progress()
+    if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
+      return null
+    }
+
+    const underOutStart = window.__GENLABS_STAGE_TIMING__?.underOut ?? 0.58
+    return (stageProgress - underOutStart) / Math.max(0.0001, 1 - underOutStart)
+  },
+})
 
 
 /**
@@ -1344,6 +1366,8 @@ gltfLoader.load(
       modelFadeOut: 0.035,
       finalTextIn: 0.972,
     }
+
+    window.__GENLABS_STAGE_TIMING__ = TIMING
 
     let heroSpinPaused = false
 
