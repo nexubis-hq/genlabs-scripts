@@ -8,6 +8,8 @@ import { ScrollTrigger as ScrollTriggerModule } from 'gsap/ScrollTrigger'
 import { tabDefinitions, defaultTabId } from './tabs.js'
 import { setupTeamSectionAnimations } from './team.js'
 import { setupFeaturesSectionAnimation } from '../features.js'
+import { setupRoadmapAscii } from './roadmap.js'
+import { setupGridAscii } from './grid.js'
 
 const isWebflowPreviewHost = location.hostname.includes('.webflow.io') || location.hostname.endsWith('webflow.io')
 if (!isWebflowPreviewHost) {
@@ -710,6 +712,8 @@ setupFeaturesSectionAnimation({
     return (stageProgress - underOutStart) / Math.max(0.0001, 1 - underOutStart)
   },
 })
+setupRoadmapAscii()
+setupGridAscii()
 
 
 /**
