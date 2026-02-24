@@ -23,17 +23,19 @@ export function setupTeamSectionAnimations({ gsap, ScrollTrigger }) {
   }
 
   if (teamItems.length) {
-    gsap.from(teamItems, {
-      autoAlpha: 0,
-      y: '+=40',
-      duration: 0.75,
-      ease: 'power2.out',
-      stagger: 0.14,
-      scrollTrigger: {
-        trigger: teamSection,
-        start: 'top 70%',
-        once: true,
-      },
+    teamItems.forEach((item, index) => {
+      gsap.from(item, {
+        autoAlpha: 0,
+        y: '+=40',
+        duration: 0.75,
+        ease: 'power2.out',
+        delay: index * 0.08,
+        scrollTrigger: {
+          trigger: item,
+          start: 'top 85%',
+          once: true,
+        },
+      })
     })
   }
 }
