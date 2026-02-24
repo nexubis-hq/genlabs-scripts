@@ -10,7 +10,10 @@ import { setupTeamSectionAnimations } from './team.js'
 import { setupFeaturesSectionAnimation } from '../features.js'
 import { setupRoadmapAscii } from './roadmap.js'
 import { setupGridAscii, setupGridStackMouseFollow } from './grid.js'
+import { setupFooterAscii } from './footer.js'
 import { setupFeaturesTabs } from './systems.js'
+import { setupViewportSplitTextReveal } from './text.js'
+import lottie from 'lottie-web'
 
 const isWebflowPreviewHost = location.hostname.includes('.webflow.io') || location.hostname.endsWith('webflow.io')
 if (!isWebflowPreviewHost) {
@@ -71,17 +74,49 @@ function pick(...selectors) {
 const dom = {
   panelHero: pick('.cc-hero', '.panel-hero'),
   panelUnder: pick('.cc-about', '.panel-under'),
-  panelConverge: pick('.cc-benefits', '.cc-system', '.panel-converge'),
+  panelConverge: pick('.cc-convergence', '.cc-benefits', '.cc-system', '.panel-converge'),
+  panelStats: pick('.cc-stats'),
+}
+
+if (dom.panelStats) {
+  gsap.set(dom.panelStats, { autoAlpha: 0 })
 }
 
 dom.underCopy = pick('[data-text="about-intro"]', '[data-text="about-into"]', '.under-copy', '.cc-about .h3.u-text-center:not(.u-text-primary)')
 dom.underHighlight = pick('[data-text="about-outro"]', '.under-highlight', '.cc-about .u-text-primary')
 
+if (dom.underCopy) {
+  dom.underCopy.dataset.splitIgnore = 'true'
+}
+
+if (dom.underHighlight) {
+  dom.underHighlight.dataset.splitIgnore = 'true'
+}
+
+const fontReady = document.fonts?.ready || Promise.resolve()
+fontReady.then(() => {
+  let attempts = 0
+  const maxAttempts = 40
+
+  const initSplitText = () => {
+    const ready = setupViewportSplitTextReveal({ gsap, ScrollTrigger })
+    if (ready) return
+
+    attempts += 1
+    if (attempts <= maxAttempts) {
+      window.setTimeout(initSplitText, 120)
+    }
+  }
+
+  initSplitText()
+})
+
 const selectors = {
   heroTitle: '[data-text="hero-title"], .hero-title',
   panelHero: '.cc-hero, .panel-hero',
   panelUnder: '.cc-about, .panel-under',
-  panelConverge: '.cc-benefits, .cc-system, .panel-converge',
+  panelConverge: '.cc-convergence, .cc-benefits, .cc-system, .panel-converge',
+  panelStats: '.cc-stats',
   underCopy: '[data-text="about-intro"], [data-text="about-into"], .under-copy, .cc-about .h3.u-text-center:not(.u-text-primary)',
   underHighlight: '[data-text="about-outro"], .under-highlight, .cc-about .u-text-primary',
 }
@@ -568,6 +603,68 @@ function setupConvergeHoverCards() {
 
 setupConvergeHoverCards()
 
+function setupStatsSectionLottie() {
+  const statsSection = document.querySelector('.grid-stage-sticky > .section.cc-stats') || document.querySelector('.section.cc-stats')
+  const statsCanvasSlot = statsSection?.querySelector('.stats_canvas')
+    || document.querySelector('.stats_canvas')
+    || statsSection?.querySelector('[data-component="stats-canvas"]')
+    || document.querySelector('[data-component="stats-canvas"]')
+
+  if (!statsSection || !statsCanvasSlot) return
+
+  const host = statsCanvasSlot instanceof HTMLCanvasElement
+    ? (statsCanvasSlot.parentElement || statsSection)
+    : statsCanvasSlot
+
+  let arcContainer = host.querySelector('.stats-arc')
+  if (!arcContainer) {
+    arcContainer = document.createElement('div')
+    arcContainer.className = 'stats-arc'
+    host.appendChild(arcContainer)
+  }
+
+  const animation = lottie.loadAnimation({
+    container: arcContainer,
+    renderer: 'svg',
+    loop: false,
+    autoplay: false,
+    path: resolveAssetUrl('/models/stats-arc.json'),
+    rendererSettings: { preserveAspectRatio: 'xMidYMid meet' },
+  })
+
+  let totalFrames = 0
+  const seekToProgress = (progress) => {
+    if (!totalFrames) return
+    const clamped = Math.min(1, Math.max(0, progress))
+    animation.goToAndStop(clamped * (totalFrames - 1), true)
+  }
+
+  animation.addEventListener('DOMLoaded', () => {
+    totalFrames = Math.max(1, Math.floor(animation.getDuration(true)))
+    seekToProgress(0)
+  })
+
+  if (ScrollTrigger && statsSection) {
+    ScrollTrigger.create({
+      trigger: statsSection,
+      start: 'top bottom',
+      end: 'bottom top',
+      scrub: true,
+      onUpdate: (self) => {
+        seekToProgress(self.progress)
+      },
+    })
+  } else {
+    animation.play()
+  }
+
+  window.addEventListener('pagehide', () => {
+    animation.destroy()
+  }, { once: true })
+}
+
+setupStatsSectionLottie()
+
 function splitElementWords(root) {
   if (!root || root.dataset.splitReady === 'true') {
     return root?.querySelectorAll('.split-word') || []
@@ -624,11 +721,89 @@ function splitElementWords(root) {
   return words
 }
 
+function prepareLineHighlight(root) {
+  if (!root || root.dataset.lineSplitReady === 'true') {
+    return {
+      lineWords: root ? Array.from(root.querySelectorAll('.split-line .split-word')) : [],
+      lineBgs: root ? Array.from(root.querySelectorAll('.split-line-bg')) : [],
+    }
+  }
+
+  splitElementWords(root)
+
+  const masks = Array.from(root.querySelectorAll('.split-word-mask'))
+  if (!masks.length) return { lineWords: [], lineBgs: [] }
+
+  const lineBuckets = []
+  const tolerance = 6
+
+  masks.forEach((mask) => {
+    const top = mask.getBoundingClientRect().top
+    const bucket = lineBuckets.find((line) => Math.abs(line.top - top) <= tolerance)
+    if (bucket) {
+      bucket.masks.push(mask)
+      return
+    }
+    lineBuckets.push({ top, masks: [mask] })
+  })
+
+  lineBuckets.sort((a, b) => a.top - b.top)
+
+  root.innerHTML = ''
+  root.style.display = 'block'
+
+  lineBuckets.forEach((line, lineIndex) => {
+    const lineWrap = document.createElement('span')
+    lineWrap.className = 'split-line'
+    lineWrap.style.position = 'relative'
+    lineWrap.style.display = 'block'
+    lineWrap.style.width = 'fit-content'
+    lineWrap.style.margin = lineIndex === 0 ? '0 auto 0.12em' : '0 auto'
+    lineWrap.style.padding = '0.03em 0.18em 0.07em'
+
+    const bg = document.createElement('span')
+    bg.className = 'split-line-bg'
+    bg.style.position = 'absolute'
+    bg.style.inset = '0'
+    bg.style.background = 'var(--_color---neutral--gray-matter)'
+    bg.style.transformOrigin = 'left center'
+    bg.style.transform = 'scaleX(0)'
+    bg.style.zIndex = '0'
+
+    const textLayer = document.createElement('span')
+    textLayer.style.position = 'relative'
+    textLayer.style.zIndex = '1'
+
+    line.masks.forEach((mask, maskIndex) => {
+      textLayer.appendChild(mask)
+      if (maskIndex < line.masks.length - 1) textLayer.appendChild(document.createTextNode(' '))
+    })
+
+    lineWrap.appendChild(bg)
+    lineWrap.appendChild(textLayer)
+    root.appendChild(lineWrap)
+  })
+
+  root.dataset.lineSplitReady = 'true'
+  return {
+    lineWords: Array.from(root.querySelectorAll('.split-line .split-word')),
+    lineBgs: Array.from(root.querySelectorAll('.split-line-bg')),
+  }
+}
+
 const textWords = {
   hero: splitElementWords(document.querySelector(selectors.heroTitle)),
   underCopy: splitElementWords(dom.underCopy),
   underHighlight: splitElementWords(dom.underHighlight),
   convergeFinal: splitElementWords(document.querySelector('.converge-final')),
+}
+
+const underHighlightLines = dom.underHighlight?.dataset.split === 'lines'
+  ? prepareLineHighlight(dom.underHighlight)
+  : { lineWords: [], lineBgs: [] }
+
+if (underHighlightLines.lineWords.length) {
+  textWords.underHighlight = underHighlightLines.lineWords
 }
 
 if (textWords.hero.length) {
@@ -648,6 +823,9 @@ if (textWords.underCopy.length) {
 }
 if (textWords.underHighlight.length) {
   gsap.set(textWords.underHighlight, { y: 50, opacity: 0 })
+}
+if (underHighlightLines.lineBgs.length) {
+  gsap.set(underHighlightLines.lineBgs, { scaleX: 0, transformOrigin: 'left center' })
 }
 if (textWords.convergeFinal.length) {
   gsap.set(textWords.convergeFinal, { y: 42, opacity: 0 })
@@ -694,6 +872,10 @@ setupExploreButton()
 setupTeamSectionAnimations({ gsap, ScrollTrigger })
 setupFeaturesSectionAnimation({
   gsap,
+  canvasSelector: '#features, .cc-convergence canvas',
+  modelUrl: resolveAssetUrl('/models/logo_split.glb'),
+  modelVerticalOffset: 0.14,
+  modelVerticalOffsetMobile: 0.1,
   stageProgressRange: [0, 1],
   getStageProgress: () => {
     const stageProgress = window.__pageTL?.progress()
@@ -717,6 +899,7 @@ setupRoadmapAscii()
 setupGridAscii()
 setupGridStackMouseFollow()
 setupFeaturesTabs()
+setupFooterAscii()
 
 
 /**
@@ -1188,6 +1371,9 @@ gltfLoader.load(
     controls.target.set(0, 0, 0)
     controls.update()
 
+    const heroCameraY = camera.position.y
+    const heroCameraZ = camera.position.z
+
     // ----- Materials: ensure lighting affects both halves -----
     logoMaterial = new THREE.MeshStandardMaterial({
       color: new THREE.Color('#ffffff'),
@@ -1237,6 +1423,14 @@ gltfLoader.load(
     const CONVERGE_ENTRY_SCALE_FACTOR = 0.42
     const CONVERGE_GROW_SCALE_FACTOR = 7.2
     const convergeBaseSize = new THREE.Vector3(1, 1, 1)
+    const convergeLayout = {
+      holdLeftX: 0,
+      holdRightX: 0,
+      holdLeftY: 0,
+      holdRightY: 0,
+      cameraStartZ: heroCameraZ,
+      cameraEndZ: -Math.max(maxDim2 * 2.6, heroCameraZ * 1.4),
+    }
     let hasConvergeGeometry = false
 
     let convergeScale = s * 2.8
@@ -1286,10 +1480,26 @@ gltfLoader.load(
         const cBox = new THREE.Box3().setFromObject(convergePivot)
         const cSize = cBox.getSize(new THREE.Vector3())
         const cCenter = cBox.getCenter(new THREE.Vector3())
+        const splitLeftBounds = new THREE.Box3().setFromObject(convergeLeft)
+        const splitRightBounds = new THREE.Box3().setFromObject(convergeRight)
+        const splitLeftSize = splitLeftBounds.getSize(new THREE.Vector3())
+        const splitRightSize = splitRightBounds.getSize(new THREE.Vector3())
         convergePivot.position.sub(cCenter)
         convergeBaseSize.copy(cSize)
         hasConvergeGeometry = true
         refreshConvergeScale()
+
+        const frustumHalfWidth = getFrustumHalfWidthAtWorldZ(camera, 0)
+        const inViewOffset = Math.max(
+          (splitLeftSize.x + splitRightSize.x) * 0.28,
+          frustumHalfWidth * 0.22,
+        )
+        const yOffset = THREE.MathUtils.clamp(cSize.y * 0.05, 0.06, 0.34)
+
+        convergeLayout.holdLeftX = -inViewOffset
+        convergeLayout.holdRightX = inViewOffset
+        convergeLayout.holdLeftY = -yOffset
+        convergeLayout.holdRightY = yOffset
 
         convergePivot.traverse((child) => {
           if (!child.isMesh) return
@@ -1303,13 +1513,12 @@ gltfLoader.load(
           child.material = material
         })
 
-        convergeLeft.position.set(0, 0, 0)
-        convergeRight.position.set(0, 0, 0)
+        convergeLeft.position.set(convergeLayout.holdLeftX, convergeLayout.holdLeftY, 0)
+        convergeRight.position.set(convergeLayout.holdRightX, convergeLayout.holdRightY, 0)
         convergePivot.rotation.set(0, 0, 0)
         applyConvergeOpacity()
         convergePivot.visible = false
 
-        // If this GLB resolves after scrolling, sync to current timeline position.
         if (window.__pageTL) {
           const p = window.__pageTL.progress()
           window.__pageTL.progress(0)
@@ -1334,8 +1543,8 @@ gltfLoader.load(
     logoRight.position.set(0, 0, 0)
     logoLeft.scale.set(1, 1, 1)
     logoRight.scale.set(1, 1, 1)
-    convergeLeft.position.set(0, 0, 0)
-    convergeRight.position.set(0, 0, 0)
+    convergeLeft.position.set(convergeLayout.holdLeftX, convergeLayout.holdLeftY, 0)
+    convergeRight.position.set(convergeLayout.holdRightX, convergeLayout.holdRightY, 0)
     convergePivot.rotation.set(0, 0, 0)
     convergeScaleState.value = CONVERGE_ENTRY_SCALE_FACTOR
     applyConvergeScale()
@@ -1345,6 +1554,7 @@ gltfLoader.load(
     pivot.visible = true
     pivot.rotation.set(0, 0, 0)
     pivot.scale.setScalar(s)
+    camera.position.set(0, heroCameraY, convergeLayout.cameraStartZ)
 
     pivot.updateMatrixWorld(true)
     const leftBounds = new THREE.Box3().setFromObject(logoLeft)
@@ -1372,6 +1582,7 @@ gltfLoader.load(
       modelFadeOutStart: 0.955,
       modelFadeOut: 0.035,
       finalTextIn: 0.972,
+      statsIn: 0.985,
     }
 
     window.__GENLABS_STAGE_TIMING__ = TIMING
@@ -1388,10 +1599,11 @@ gltfLoader.load(
           invalidateOnRefresh: true,
           onUpdate: (self) => {
             const shouldPause = self.progress >= TIMING.convergeIn
-            if (shouldPause === heroSpinPaused) return
-            heroSpinPaused = shouldPause
-            if (heroSpinPaused) heroRotateTween.pause()
-            else heroRotateTween.resume()
+            if (shouldPause !== heroSpinPaused) {
+              heroSpinPaused = shouldPause
+              if (heroSpinPaused) heroRotateTween.pause()
+              else heroRotateTween.resume()
+            }
           },
         }
       }
@@ -1414,6 +1626,7 @@ gltfLoader.load(
     gsap.set(selectors.underCopy, { autoAlpha: 1 })
     gsap.set(selectors.underHighlight, { autoAlpha: 1 })
     gsap.set(selectors.panelConverge, { autoAlpha: 0 })
+    gsap.set(selectors.panelStats, { autoAlpha: 0 })
     if (hasConvergeLabels) gsap.set('.converge-label', { autoAlpha: 0, y: 18 })
     if (hasConvergeCards) gsap.set('.converge-hover-card', { autoAlpha: 0, scale: 0.96 })
     if (hasConvergeFinalLine) gsap.set('.converge-final', { autoAlpha: 0 })
@@ -1438,25 +1651,29 @@ gltfLoader.load(
       tl.to(textWords.underCopy, {
         y: 0,
         opacity: 1,
-        ease: 'power2.out',
-        duration: 0.16,
-        stagger: 0.004,
-      }, 0.01)
+        ease: 'power3.out',
+        duration: 0.18,
+        stagger: 0.008,
+      }, 0.08)
     }
-
-    // 30% -> 50% : HOLD (do nothing)
-    // (we create “hold” by simply not animating anything in this window)
-
-    // Mid-scroll: highlight line appears beneath the main copy
 
     if (textWords.underHighlight.length) {
       tl.to(textWords.underHighlight, {
         y: 0,
         opacity: 1,
+        ease: 'power3.out',
+        duration: 0.15,
+        stagger: 0.012,
+      }, TIMING.copySwapStart)
+    }
+
+    if (underHighlightLines.lineBgs.length) {
+      tl.to(underHighlightLines.lineBgs, {
+        scaleX: 1,
         ease: 'power2.out',
         duration: 0.14,
-        stagger: 0.01,
-      }, TIMING.copySwapStart)
+        stagger: 0.08,
+      }, TIMING.copySwapStart + 0.06)
     }
 
     // Under panel exits before convergence sequence
@@ -1522,7 +1739,6 @@ gltfLoader.load(
       duration: 0.08,
     }, TIMING.underOut)
 
-    // === CONVERGENCE LOGO: static split model fades in with labels ===
     const phaseHandoff = { value: 0 }
     tl.to(phaseHandoff, {
       value: 1,
@@ -1550,6 +1766,34 @@ gltfLoader.load(
       ease: 'power3.in',
       duration: convergeGrowToFadeDuration,
       onUpdate: applyConvergeScale,
+    }, TIMING.convergeGrowStart)
+
+    const convergeMergeDuration = Math.max(0.001, TIMING.modelFadeOutStart - TIMING.centralizedIn)
+    tl.to(convergeLeft.position, {
+      x: 0,
+      y: 0,
+      ease: 'power2.inOut',
+      duration: convergeMergeDuration,
+    }, TIMING.centralizedIn)
+
+    tl.to(convergeRight.position, {
+      x: 0,
+      y: 0,
+      ease: 'power2.inOut',
+      duration: convergeMergeDuration,
+    }, TIMING.centralizedIn)
+
+    tl.to(convergePivot.rotation, {
+      z: Math.PI * 0.25,
+      ease: 'power2.inOut',
+      duration: Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart),
+    }, TIMING.convergeGrowStart)
+
+    tl.to(camera.position, {
+      y: 0,
+      z: convergeLayout.cameraEndZ,
+      ease: 'power3.in',
+      duration: Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart),
     }, TIMING.convergeGrowStart)
 
     tl.to(convergeScaleState, {
@@ -1608,6 +1852,18 @@ gltfLoader.load(
         stagger: 0.02,
       }, TIMING.finalTextIn)
     }
+
+    tl.to(selectors.panelConverge, {
+      autoAlpha: 0,
+      ease: 'none',
+      duration: 0.015,
+    }, TIMING.statsIn)
+
+    tl.to(selectors.panelStats, {
+      autoAlpha: 1,
+      ease: 'none',
+      duration: 0.015,
+    }, TIMING.statsIn)
 
     window.__pageTL = tl
     ScrollTrigger?.refresh()
