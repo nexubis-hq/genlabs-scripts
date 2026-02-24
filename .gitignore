@@ -1,2 +1,6 @@
 node_modules/
 .env
+package-lock.json
+webflow-loader.js
+webflow-localhost-loader.js
+.DS_Store
