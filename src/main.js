@@ -10,6 +10,7 @@ import { setupTeamSectionAnimations } from './team.js'
 import { setupFeaturesSectionAnimation } from '../features.js'
 import { setupRoadmapAscii } from './roadmap.js'
 import { setupGridAscii, setupGridStackMouseFollow } from './grid.js'
+import { setupFeaturesTabs } from './systems.js'
 
 const isWebflowPreviewHost = location.hostname.includes('.webflow.io') || location.hostname.endsWith('webflow.io')
 if (!isWebflowPreviewHost) {
@@ -715,6 +716,7 @@ setupFeaturesSectionAnimation({
 setupRoadmapAscii()
 setupGridAscii()
 setupGridStackMouseFollow()
+setupFeaturesTabs()
 
 
 /**
