@@ -914,7 +914,7 @@ function setupConvergenceVideoScrub() {
   video.muted = true
   video.pause()
   
-  // Ensure video starts at 0 with multiple attempts
+  // Ensure video starts at 0 with multiple attempts (delayed by 1 second)
   const forceStartAtZero = () => {
     if (video.readyState >= 1) {
       video.currentTime = 0
@@ -924,18 +924,23 @@ function setupConvergenceVideoScrub() {
   
   syncMetadata()
   seek(0)
-  forceStartAtZero()
+  
+  // Delay initial start by 1 second
+  setTimeout(() => {
+    forceStartAtZero()
+  }, 1000)
 
   video.addEventListener('loadedmetadata', () => {
     syncMetadata()
     seek(0)
-    forceStartAtZero()
-    // Double-check after a brief delay to ensure it sticks
-    setTimeout(forceStartAtZero, 100)
+    // Delay force start by 1 second after metadata loads
+    setTimeout(forceStartAtZero, 1000)
   })
   
-  // Ensure it starts at 0 once data is loaded
-  video.addEventListener('loadeddata', forceStartAtZero)
+  // Ensure it starts at 0 once data is loaded (also delayed)
+  video.addEventListener('loadeddata', () => {
+    setTimeout(forceStartAtZero, 1000)
+  })
 
   if (isMobile()) {
     const convergeSection = document.querySelector('.cc-convergence') || document.querySelector('.cc-benefits')
