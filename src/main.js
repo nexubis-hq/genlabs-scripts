@@ -373,74 +373,61 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
 
 // -----------------------------
-// Cursor + Coordinates overlay (HTML)
+// Cursor overlay (HTML) — desktop only
 // -----------------------------
-const cursor = document.createElement('div')
-cursor.id = 'cursor'
-cursor.style.cssText = `
-  position: fixed;
-  left: 0; top: 0;
-  width: 10px; height: 10px;
-  border-radius: 999px;
-  background: #5491ff;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0;
-`
+let cursor = null
+let mouse = null
+let dotOffset = null
+let smoothX = 0
+let smoothY = 0
+let damping = 0
 
-const cursorLabel = document.createElement('div')
-cursorLabel.id = 'cursorLabel'
-cursorLabel.style.cssText = `
-  position: fixed;
-  left: 0; top: 0;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  color: #1a1a1a;
-  font: 12px/1 Consolas, "Courier New", monospace;
-  letter-spacing: 0.2px;
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0;
-  white-space: nowrap;
-  text-shadow: 0 px 0 #1a1a1a;
-`
+if (!isMobile()) {
+  cursor = document.createElement('div')
+  cursor.id = 'cursor'
+  cursor.style.cssText = `
+    position: fixed;
+    left: 0; top: 0;
+    width: 10px; height: 10px;
+    border-radius: 999px;
+    background: #5491ff;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0;
+  `
 
-document.body.appendChild(cursor)
-document.body.appendChild(cursorLabel)
+  document.body.appendChild(cursor)
 
-const mouse = {
-  x: window.innerWidth * 0.5,
-  y: window.innerHeight * 0.5,
-  nx: 0,
-  ny: 0,
-  active: false
+  mouse = {
+    x: window.innerWidth * 0.5,
+    y: window.innerHeight * 0.5,
+    nx: 0,
+    ny: 0,
+    active: false
+  }
+
+  const updateMouse = (e) => {
+    mouse.x = e.clientX
+    mouse.y = e.clientY
+    mouse.active = true
+
+    cursor.style.opacity = '1'
+  }
+
+  window.addEventListener('pointermove', updateMouse, { passive: true })
+  window.addEventListener('pointerdown', updateMouse, { passive: true })
+  window.addEventListener('pointerleave', () => {
+    mouse.active = false
+    cursor.style.opacity = '0'
+  })
+
+  // Damping / offsets
+  dotOffset = { x: 0, y: -14 }     // dot sits above the real cursor
+  smoothX = window.innerWidth * 0.5
+  smoothY = window.innerHeight * 0.5
+  damping = 0.12 // 0.08–0.2 (higher = snappier)
 }
-
-const updateMouse = (e) => {
-  mouse.x = e.clientX
-  mouse.y = e.clientY
-  mouse.active = true
-
-  cursor.style.opacity = '1'
-  cursorLabel.style.opacity = '1'
-}
-
-window.addEventListener('pointermove', updateMouse, { passive: true })
-window.addEventListener('pointerdown', updateMouse, { passive: true })
-window.addEventListener('pointerleave', () => {
-  mouse.active = false
-  cursor.style.opacity = '0'
-  cursorLabel.style.opacity = '0'
-})
-
-// Damping / offsets
-const cursorOffset = { x: 10, y: -24 } // label position relative to dot
-const dotOffset = { x: 0, y: -14 }     // dot sits above the real cursor
-let smoothX = window.innerWidth * 0.5
-let smoothY = window.innerHeight * 0.5
-const damping = 0.12 // 0.08–0.2 (higher = snappier)
 
 const NAV_SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 const navScrambleState = new WeakMap()
@@ -2764,8 +2751,8 @@ const tick = () => {
   controls.update()
   bgUniforms.uTime.value = elapsedTime
 
-  // Cursor overlay update (damped)
-  if (mouse.active) {
+  // Cursor overlay update (damped) — desktop only
+  if (!isMobile() && cursor && mouse?.active) {
     // target position (dot sits slightly above the real cursor)
     const targetX = mouse.x + dotOffset.x
     const targetY = mouse.y + dotOffset.y
@@ -2777,13 +2764,6 @@ const tick = () => {
     // dot follows smoothed position
     cursor.style.left = `${smoothX}px`
     cursor.style.top = `${smoothY}px`
-
-    // label sits slightly to the right + above the dot
-    cursorLabel.style.left = `${smoothX + cursorOffset.x}px`
-    cursorLabel.style.top = `${smoothY + cursorOffset.y}px`
-
-    // only show x/y
-    cursorLabel.textContent = `x:${smoothX.toFixed(3)}  y:${smoothY.toFixed(3)}`
 
   }
 

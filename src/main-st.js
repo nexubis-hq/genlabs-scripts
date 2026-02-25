@@ -357,7 +357,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
 
 // -----------------------------
-// Cursor + Coordinates overlay (HTML)
+// Cursor dot overlay (HTML)
 // -----------------------------
 const cursor = document.createElement('div')
 cursor.id = 'cursor'
@@ -373,26 +373,7 @@ cursor.style.cssText = `
   opacity: 0;
 `
 
-const cursorLabel = document.createElement('div')
-cursorLabel.id = 'cursorLabel'
-cursorLabel.style.cssText = `
-  position: fixed;
-  left: 0; top: 0;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  color: #1a1a1a;
-  font: 12px/1 Consolas, "Courier New", monospace;
-  letter-spacing: 0.2px;
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0;
-  white-space: nowrap;
-  text-shadow: 0 px 0 #1a1a1a;
-`
-
 document.body.appendChild(cursor)
-document.body.appendChild(cursorLabel)
 
 const mouse = {
   x: window.innerWidth * 0.5,
@@ -408,7 +389,6 @@ const updateMouse = (e) => {
   mouse.active = true
 
   cursor.style.opacity = '1'
-  cursorLabel.style.opacity = '1'
 }
 
 window.addEventListener('pointermove', updateMouse, { passive: true })
@@ -416,11 +396,9 @@ window.addEventListener('pointerdown', updateMouse, { passive: true })
 window.addEventListener('pointerleave', () => {
   mouse.active = false
   cursor.style.opacity = '0'
-  cursorLabel.style.opacity = '0'
 })
 
 // Damping / offsets
-const cursorOffset = { x: 10, y: -24 } // label position relative to dot
 const dotOffset = { x: 0, y: -14 }     // dot sits above the real cursor
 let smoothX = window.innerWidth * 0.5
 let smoothY = window.innerHeight * 0.5
@@ -2638,13 +2616,6 @@ const tick = () => {
     // dot follows smoothed position
     cursor.style.left = `${smoothX}px`
     cursor.style.top = `${smoothY}px`
-
-    // label sits slightly to the right + above the dot
-    cursorLabel.style.left = `${smoothX + cursorOffset.x}px`
-    cursorLabel.style.top = `${smoothY + cursorOffset.y}px`
-
-    // only show x/y
-    cursorLabel.textContent = `x:${smoothX.toFixed(3)}  y:${smoothY.toFixed(3)}`
 
   }
 
