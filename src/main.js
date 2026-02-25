@@ -713,26 +713,42 @@ function getWebflowLottie(selector) {
 // Stats section lottie (.stats-arc) — scroll-driven
 // ─────────────────────────────────────────────────────────────────────────────
 function setupStatsSectionLottie() {
-  if (!document.querySelector('.stats-arc')) return
+  const arcEl = document.querySelector('.stats-arc')
+  if (!arcEl) {
+    console.warn('[Stats Lottie] .stats-arc element not found in DOM')
+    return
+  }
+  console.log('[Stats Lottie] .stats-arc found, starting getWebflowLottie poll')
 
   const LOTTIE_DELAY = 0
   const LOTTIE_SPAN = 0.10
 
   getWebflowLottie('.stats-arc').then((anim) => {
     if (!anim) {
-      console.warn('[Stats Lottie] could not find Webflow lottie for .stats-arc')
+      console.warn('[Stats Lottie] ❌ could not find Webflow lottie for .stats-arc after polling')
+      // Log all registered animations for diagnosis
+      try {
+        const all = window.Webflow?.require?.('lottie')?.lottie?.getRegisteredAnimations() ?? []
+        console.log('[Stats Lottie] registered animations:', all.map(a => ({
+          wrapper: a.wrapper?.className,
+          isLoaded: a.isLoaded,
+          totalFrames: a.totalFrames,
+          isPaused: a.isPaused,
+        })))
+      } catch(e) { console.warn('[Stats Lottie] could not read registry:', e) }
       return
     }
 
-    // stats-arc.json: ip=428 op=638 fr=24. goToAndStop(frame, true) uses absolute
-    // frame numbers, so we offset by ip. playSegments resets the internal segment
-    // so subsequent goToAndStop calls work within the content range.
     const ip = anim.animationData?.ip ?? 0
     const op = anim.animationData?.op ?? anim.totalFrames
     const totalFrames = op - ip
     let lastFrame = -1
     let rafId = 0
     let hasResized = false
+
+    console.log('[Stats Lottie] ✅ found — ip:', ip, 'op:', op, 'totalFrames:', totalFrames,
+      'wrapper:', anim.wrapper?.className,
+      'wrapperRect:', JSON.stringify(anim.wrapper?.getBoundingClientRect()))
 
     const seek = (progress) => {
       const frame = Math.round(ip + Math.max(0, Math.min(1, progress)) * totalFrames)
@@ -741,23 +757,13 @@ function setupStatsSectionLottie() {
       anim.goToAndStop(frame, true)
     }
 
-    // Reset animation to a clean state: use playSegments to define the active
-    // frame range, then immediately pause. This ensures lottie-web's internal
-    // segment boundaries are set correctly and goToAndStop works as expected.
     anim.playSegments([ip, op], true)
     anim.pause()
     anim.goToAndStop(ip, true)
-
-    // Force a resize so the SVG renderer measures the container correctly even
-    // while the .cc-stats section is at opacity:0 / positioned absolutely.
     if (typeof anim.resize === 'function') anim.resize()
 
-    console.log('[Stats Lottie] ready — ip:', ip, 'op:', op, 'span:', totalFrames, 'totalFrames:', anim.totalFrames)
-
-    // On mobile, drive the lottie with its own ScrollTrigger based on viewport
-    // visibility (the section scrolls normally). On desktop, scrub via the
-    // master stage timeline progress.
     if (isMobile()) {
+      console.log('[Stats Lottie] mobile path — using IntersectionObserver ScrollTrigger')
       const statsSection = document.querySelector('.cc-stats')
       if (statsSection && ScrollTrigger) {
         ScrollTrigger.create({
@@ -773,31 +779,45 @@ function setupStatsSectionLottie() {
             seek(self.progress)
           },
         })
+      } else {
+        console.warn('[Stats Lottie] mobile: .cc-stats not found or no ScrollTrigger', { statsSection, ScrollTrigger })
       }
     } else {
+      console.log('[Stats Lottie] desktop path — polling __pageTL')
       const stageToLottie = (stageProgress) => {
         const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? 0.835
         const start = statsIn + LOTTIE_DELAY
         return Math.max(0, Math.min(1, (stageProgress - start) / LOTTIE_SPAN))
       }
 
-      let debugN = 0
+      let logN = 0
       const tick = () => {
-        if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
+        if (!window.__pageTL) {
+          if (logN++ % 120 === 0) console.log('[Stats Lottie] waiting for __pageTL...')
+          rafId = requestAnimationFrame(tick)
+          return
+        }
         const p = window.__pageTL.progress()
         if (typeof p === 'number') {
           const lp = stageToLottie(p)
 
-          // When the stats section first becomes visible (lp > 0), force a resize
-          // on the lottie renderer. The .cc-stats section starts at opacity:0 and
-          // the SVG may have been laid out with stale dimensions.
-          if (lp > 0 && !hasResized) {
+          if (!hasResized && lp > 0) {
             hasResized = true
+            console.log('[Stats Lottie] first visible — forcing resize. stage:', p.toFixed(4))
             if (typeof anim.resize === 'function') anim.resize()
           }
 
-          if (lp > 0 && debugN++ % 30 === 0) {
-            console.log('[Stats Lottie] stage:', p.toFixed(4), 'lottie:', lp.toFixed(4), 'frame:', lastFrame)
+          // Log every 2s while lottie is active
+          if (logN++ % 120 === 0) {
+            const runway = document.querySelector('#grid-stage-scroll')
+            console.log('[Stats Lottie] tick —',
+              'stage:', p.toFixed(4),
+              'lottie:', lp.toFixed(4),
+              'frame:', lastFrame,
+              'statsIn:', window.__GENLABS_STAGE_TIMING__?.statsIn,
+              'runwayH:', runway?.offsetHeight,
+              'scrollY:', window.scrollY,
+            )
           }
           seek(lp)
         }
@@ -806,9 +826,7 @@ function setupStatsSectionLottie() {
       rafId = requestAnimationFrame(tick)
     }
 
-    // Expose for debugging
     window.__GENLABS_STATS_LOTTIE__ = anim
-
     window.addEventListener('pagehide', () => { if (rafId) cancelAnimationFrame(rafId) }, { once: true })
   })
 }
