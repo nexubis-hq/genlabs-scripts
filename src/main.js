@@ -913,13 +913,29 @@ function setupConvergenceVideoScrub() {
   video.loop = false
   video.muted = true
   video.pause()
+  
+  // Ensure video starts at 0 with multiple attempts
+  const forceStartAtZero = () => {
+    if (video.readyState >= 1) {
+      video.currentTime = 0
+      console.log('[Convergence Video] Set to start (0s)')
+    }
+  }
+  
   syncMetadata()
   seek(0)
+  forceStartAtZero()
 
   video.addEventListener('loadedmetadata', () => {
     syncMetadata()
     seek(0)
+    forceStartAtZero()
+    // Double-check after a brief delay to ensure it sticks
+    setTimeout(forceStartAtZero, 100)
   })
+  
+  // Ensure it starts at 0 once data is loaded
+  video.addEventListener('loadeddata', forceStartAtZero)
 
   if (isMobile()) {
     const convergeSection = document.querySelector('.cc-convergence') || document.querySelector('.cc-benefits')
