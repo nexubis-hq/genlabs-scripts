@@ -341,21 +341,8 @@ export function setupFeaturesTabs() {
   void setActiveModel(defaultButton)
 
   const clock = new THREE.Clock()
-
-  let mouseX = 0
-  let mouseY = 0
-  let targetRotX = 0
-  let targetRotY = 0
-
-  const onMouseMove = (e) => {
-    const rect = canvas.getBoundingClientRect()
-    const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1
-    const ny = ((e.clientY - rect.top) / rect.height) * 2 - 1
-    targetRotY = nx * 0.6
-    targetRotX = -ny * 0.25
-  }
-
-  canvas.addEventListener('mousemove', onMouseMove)
+  const autoRotateSpeedY = 0.6
+  const autoRotateTiltAmountX = 0.12
 
   const renderAscii = () => {
     if (!pixelBuffer) return
@@ -417,15 +404,16 @@ export function setupFeaturesTabs() {
       return
     }
 
-    const elapsed = clock.getElapsedTime()
+    const delta = clock.getDelta()
+    const elapsed = clock.elapsedTime
 
     if (SHOW_BACKGROUND_NOISE) {
       bgUniforms.uTime.value = elapsed
     }
 
     if (activeModel) {
-      modelRoot.rotation.y += (targetRotY - modelRoot.rotation.y) * 0.08
-      modelRoot.rotation.x += (targetRotX - modelRoot.rotation.x) * 0.08
+      modelRoot.rotation.y += autoRotateSpeedY * delta
+      modelRoot.rotation.x = Math.sin(elapsed * 0.85) * autoRotateTiltAmountX
     }
 
     renderer.setRenderTarget(target)
@@ -442,7 +430,6 @@ export function setupFeaturesTabs() {
     destroy() {
       resizeObserver.disconnect()
       window.removeEventListener('resize', resize)
-      canvas.removeEventListener('mousemove', onMouseMove)
       target?.dispose()
       renderer.dispose()
     },

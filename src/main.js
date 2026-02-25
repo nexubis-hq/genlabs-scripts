@@ -112,17 +112,29 @@ if (dom.underHighlight) {
 const MOBILE_BREAKPOINT = 940
 const isMobile = () => window.innerWidth <= MOBILE_BREAKPOINT
 
+const getStageStickyRoot = () => {
+  return document.querySelector('#grid-stage .grid-stage-sticky')
+    || document.querySelector('.grid-stage-sticky')
+}
+
+const isStatsStageManaged = () => {
+  const sticky = getStageStickyRoot()
+  const statsSection = document.querySelector('.cc-stats')
+  return Boolean(sticky && statsSection && sticky.contains(statsSection))
+}
+
 // ── Immediately hide panels that will be scroll-revealed ──────────────────
 // This runs at module-load time (before GLB loads) to prevent the convergence
 // and stats lotties from being visible while Webflow autoplays them.
 // The GSAP stage timeline will reveal them at the correct scroll position.
 // On mobile these sections are pulled out of the sticky container and scroll
 // normally, so we leave them visible.
+const shouldStageManageStatsAtBoot = isStatsStageManaged()
 if (!isMobile()) {
   if (dom.panelConverge) {
     dom.panelConverge.style.opacity = '0'
   }
-  if (dom.panelStats) {
+  if (dom.panelStats && shouldStageManageStatsAtBoot) {
     dom.panelStats.style.opacity = '0'
     dom.panelStats.style.visibility = 'visible' // keep lottie renderer active
   }
@@ -158,6 +170,10 @@ const selectors = {
   panelStats: '.cc-stats',
   underCopy: '[data-text="about-intro"], [data-text="about-into"], .under-copy, .cc-about .h3.u-text-center:not(.u-text-primary)',
   underHighlight: '[data-text="about-outro"], .under-highlight, .cc-about .u-text-primary',
+}
+
+const hasConvergenceVideoSection = () => {
+  return Boolean(document.querySelector('.cc-convergence .convergence-video, .cc-benefits .convergence-video, .convergence-video'))
 }
 
 const getStageElements = () => {
@@ -722,7 +738,14 @@ function getWebflowLottie(selector) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Stats section lottie (.stats-arc) — scroll-driven
 // ─────────────────────────────────────────────────────────────────────────────
+const DESKTOP_STATS_IN = 0.835
+
 function setupStatsSectionLottie() {
+  if (!isStatsStageManaged()) {
+    console.log('[Stats Lottie] skipping scroll scrub — stats section is not in .grid-stage-sticky')
+    return
+  }
+
   const arcEl = document.querySelector('.stats-arc')
   if (!arcEl) {
     console.warn('[Stats Lottie] .stats-arc element not found in DOM')
@@ -794,7 +817,7 @@ function setupStatsSectionLottie() {
     } else {
       console.log('[Stats Lottie] desktop path — polling __pageTL')
       const stageToLottie = (stageProgress) => {
-        const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? 0.835
+        const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? DESKTOP_STATS_IN
         const start = statsIn + LOTTIE_DELAY
         // Span = remaining timeline after statsIn so lottie plays across
         // the full cc-stats scroll distance, not just 10% of it
@@ -845,6 +868,23 @@ function setupStatsSectionLottie() {
 
 setupStatsSectionLottie()
 
+const CONVERGENCE_MEDIA_MOBILE_START = 'top top'
+const CONVERGENCE_MEDIA_MOBILE_END = 'bottom top'
+const CONVERGENCE_MEDIA_MOBILE_SCRUB = 0.6
+
+const clamp01 = (v) => Math.max(0, Math.min(1, v))
+
+function getConvergenceMediaProgress(stageProgress) {
+  const timing = window.__GENLABS_STAGE_TIMING__
+  const convergeIn = timing?.convergeIn ?? 0.56
+  const convergeGlbStart = timing?.convergeGlbStart ?? convergeIn
+  const statsIn = timing?.statsIn ?? DESKTOP_STATS_IN
+  // Start media when the convergence handoff begins (section is fully in).
+  const start = Math.min(statsIn - 0.0001, Math.max(convergeIn, convergeGlbStart))
+  const span = Math.max(0.0001, statsIn - start)
+  return clamp01((stageProgress - start) / span)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Convergence section lottie (.convergence-lottie) — scroll-driven
 // ─────────────────────────────────────────────────────────────────────────────
@@ -893,9 +933,9 @@ function setupConvergeSectionLottie() {
       if (convergeSection && ScrollTrigger) {
         ScrollTrigger.create({
           trigger: convergeSection,
-          start: 'top 80%',
-          end: 'bottom 20%',
-          scrub: 0.6,
+          start: CONVERGENCE_MEDIA_MOBILE_START,
+          end: CONVERGENCE_MEDIA_MOBILE_END,
+          scrub: CONVERGENCE_MEDIA_MOBILE_SCRUB,
           onUpdate: (self) => {
             if (!hasResized && self.progress > 0) {
               hasResized = true
@@ -906,18 +946,11 @@ function setupConvergeSectionLottie() {
         })
       }
     } else {
-      const stageToLottie = (stageProgress) => {
-        const timing = window.__GENLABS_STAGE_TIMING__
-        const convergeIn = timing?.convergeIn ?? 0.56
-        const statsIn = timing?.statsIn ?? 0.835
-        return Math.max(0, Math.min(1, (stageProgress - convergeIn) / (statsIn - convergeIn)))
-      }
-
       const tick = () => {
         if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
         const p = window.__pageTL.progress()
         if (typeof p === 'number') {
-          const lp = stageToLottie(p)
+          const lp = getConvergenceMediaProgress(p)
 
           // Force resize the first time the convergence section becomes visible
           if (lp > 0 && !hasResized) {
@@ -952,8 +985,6 @@ function setupConvergenceVideoScrub() {
   let hasMetadata = false
   let duration = 0
   let lastTime = -1
-
-  const clamp01 = (v) => Math.max(0, Math.min(1, v))
 
   const syncMetadata = () => {
     const d = video.duration
@@ -992,23 +1023,15 @@ function setupConvergenceVideoScrub() {
     if (convergeSection && ScrollTrigger) {
       ScrollTrigger.create({
         trigger: convergeSection,
-        start: 'top 80%',
-        end: 'bottom 20%',
-        scrub: 0.6,
+        start: CONVERGENCE_MEDIA_MOBILE_START,
+        end: CONVERGENCE_MEDIA_MOBILE_END,
+        scrub: CONVERGENCE_MEDIA_MOBILE_SCRUB,
         onUpdate: (self) => {
           seek(self.progress)
         },
       })
     }
   } else {
-    const stageToVideo = (stageProgress) => {
-      const timing = window.__GENLABS_STAGE_TIMING__
-      const convergeIn = timing?.convergeIn ?? 0.56
-      const statsIn = timing?.statsIn ?? 0.835
-      const span = Math.max(0.0001, statsIn - convergeIn)
-      return clamp01((stageProgress - convergeIn) / span)
-    }
-
     const tick = () => {
       if (!window.__pageTL) {
         rafId = requestAnimationFrame(tick)
@@ -1016,7 +1039,7 @@ function setupConvergenceVideoScrub() {
       }
       const p = window.__pageTL.progress()
       if (typeof p === 'number') {
-        seek(stageToVideo(p))
+        seek(getConvergenceMediaProgress(p))
       }
       rafId = requestAnimationFrame(tick)
     }
@@ -1234,36 +1257,38 @@ function setupExploreButton() {
 
 setupExploreButton()
 setupTeamSectionAnimations({ gsap, ScrollTrigger })
-setupFeaturesSectionAnimation({
-  gsap,
-  canvasSelector: '#features, .cc-convergence canvas',
-  modelUrl: resolveAssetUrl('/models/logo_split.glb'),
-  modelVerticalOffset: 0.14,
-  modelVerticalOffsetMobile: 0.1,
-  stageProgressRange: [0, 1],
-  getStageProgress: () => {
-    const stageProgress = window.__pageTL?.progress()
-    if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
-      return null
-    }
+if (!hasConvergenceVideoSection()) {
+  setupFeaturesSectionAnimation({
+    gsap,
+    canvasSelector: '#features, .cc-convergence canvas',
+    modelUrl: resolveAssetUrl('/models/logo_split.glb'),
+    modelVerticalOffset: 0.14,
+    modelVerticalOffsetMobile: 0.1,
+    stageProgressRange: [0, 1],
+    getStageProgress: () => {
+      const stageProgress = window.__pageTL?.progress()
+      if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
+        return null
+      }
 
-    return stageProgress
-  },
-  getVisibilityProgress: () => {
-    const stageProgress = window.__pageTL?.progress()
-    if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
-      return null
-    }
+      return stageProgress
+    },
+    getVisibilityProgress: () => {
+      const stageProgress = window.__pageTL?.progress()
+      if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
+        return null
+      }
 
-    const underOutStart = window.__GENLABS_STAGE_TIMING__?.underOut ?? 0.58
-    return (stageProgress - underOutStart) / Math.max(0.0001, 1 - underOutStart)
-  },
-})
+      const underOutStart = window.__GENLABS_STAGE_TIMING__?.underOut ?? 0.58
+      return (stageProgress - underOutStart) / Math.max(0.0001, 1 - underOutStart)
+    },
+  })
+}
 
   // ── Mobile convergence canvas — logo_split.glb merged + rotating on entry ──
   ; (function setupMobileConvergenceCanvas() {
     const canvas = document.querySelector('[data-component="convergence-mobile"]')
-    if (!canvas || !isMobile()) return
+    if (!canvas || !isMobile() || hasConvergenceVideoSection()) return
 
     // Size to parent container (.convergence_canvas-wrap)
     function getContainerSize() {
@@ -2063,78 +2088,80 @@ gltfLoader.load(
     convergePivot.add(convergeLeft, convergeRight)
     convergePivot.visible = false
 
-    gltfLoader.load(
-      resolveAssetUrl('/models/logo_split.glb'),
-      (splitGltf) => {
-        const splitRoot = splitGltf.scene
-        splitRoot.updateMatrixWorld(true)
+    if (!hasConvergenceVideoSection()) {
+      gltfLoader.load(
+        resolveAssetUrl('/models/logo_split.glb'),
+        (splitGltf) => {
+          const splitRoot = splitGltf.scene
+          splitRoot.updateMatrixWorld(true)
 
-        const splitLeftObj = splitRoot.getObjectByName('clogo_L')
-        const splitRightObj = splitRoot.getObjectByName('clogo_R')
+          const splitLeftObj = splitRoot.getObjectByName('clogo_L')
+          const splitRightObj = splitRoot.getObjectByName('clogo_R')
 
-        if (!splitLeftObj || !splitRightObj) {
-          console.log('Could not find clogo_L / clogo_R. Available:')
-          splitRoot.traverse(o => { if (o.name) console.log(o.name) })
-          return
-        }
+          if (!splitLeftObj || !splitRightObj) {
+            console.log('Could not find clogo_L / clogo_R. Available:')
+            splitRoot.traverse(o => { if (o.name) console.log(o.name) })
+            return
+          }
 
-        splitLeftObj.removeFromParent()
-        splitRightObj.removeFromParent()
-        convergeLeft.add(splitLeftObj)
-        convergeRight.add(splitRightObj)
+          splitLeftObj.removeFromParent()
+          splitRightObj.removeFromParent()
+          convergeLeft.add(splitLeftObj)
+          convergeRight.add(splitRightObj)
 
-        convergePivot.updateMatrixWorld(true)
-        const cBox = new THREE.Box3().setFromObject(convergePivot)
-        const cSize = cBox.getSize(new THREE.Vector3())
-        const cCenter = cBox.getCenter(new THREE.Vector3())
-        const splitLeftBounds = new THREE.Box3().setFromObject(convergeLeft)
-        const splitRightBounds = new THREE.Box3().setFromObject(convergeRight)
-        const splitLeftSize = splitLeftBounds.getSize(new THREE.Vector3())
-        const splitRightSize = splitRightBounds.getSize(new THREE.Vector3())
-        convergePivot.position.sub(cCenter)
-        convergeBaseSize.copy(cSize)
-        hasConvergeGeometry = true
-        refreshConvergeScale()
+          convergePivot.updateMatrixWorld(true)
+          const cBox = new THREE.Box3().setFromObject(convergePivot)
+          const cSize = cBox.getSize(new THREE.Vector3())
+          const cCenter = cBox.getCenter(new THREE.Vector3())
+          const splitLeftBounds = new THREE.Box3().setFromObject(convergeLeft)
+          const splitRightBounds = new THREE.Box3().setFromObject(convergeRight)
+          const splitLeftSize = splitLeftBounds.getSize(new THREE.Vector3())
+          const splitRightSize = splitRightBounds.getSize(new THREE.Vector3())
+          convergePivot.position.sub(cCenter)
+          convergeBaseSize.copy(cSize)
+          hasConvergeGeometry = true
+          refreshConvergeScale()
 
-        const frustumHalfWidth = getFrustumHalfWidthAtWorldZ(camera, 0)
-        const inViewOffset = Math.max(
-          (splitLeftSize.x + splitRightSize.x) * 0.28,
-          frustumHalfWidth * 0.22,
-        )
-        const yOffset = THREE.MathUtils.clamp(cSize.y * 0.05, 0.06, 0.34)
+          const frustumHalfWidth = getFrustumHalfWidthAtWorldZ(camera, 0)
+          const inViewOffset = Math.max(
+            (splitLeftSize.x + splitRightSize.x) * 0.28,
+            frustumHalfWidth * 0.22,
+          )
+          const yOffset = THREE.MathUtils.clamp(cSize.y * 0.05, 0.06, 0.34)
 
-        convergeLayout.holdLeftX = -inViewOffset
-        convergeLayout.holdRightX = inViewOffset
-        convergeLayout.holdLeftY = -yOffset
-        convergeLayout.holdRightY = yOffset
+          convergeLayout.holdLeftX = -inViewOffset
+          convergeLayout.holdRightX = inViewOffset
+          convergeLayout.holdLeftY = -yOffset
+          convergeLayout.holdRightY = yOffset
 
-        convergePivot.traverse((child) => {
-          if (!child.isMesh) return
-          child.castShadow = false
-          child.receiveShadow = false
-          const material = logoMaterial.clone()
-          material.transparent = true
-          material.opacity = convergeOpacity.value
-          material.needsUpdate = true
-          convergeMaterials.push(material)
-          child.material = material
-        })
+          convergePivot.traverse((child) => {
+            if (!child.isMesh) return
+            child.castShadow = false
+            child.receiveShadow = false
+            const material = logoMaterial.clone()
+            material.transparent = true
+            material.opacity = convergeOpacity.value
+            material.needsUpdate = true
+            convergeMaterials.push(material)
+            child.material = material
+          })
 
-        convergeLeft.position.set(convergeLayout.holdLeftX, convergeLayout.holdLeftY, 0)
-        convergeRight.position.set(convergeLayout.holdRightX, convergeLayout.holdRightY, 0)
-        convergePivot.rotation.set(0, 0, 0)
-        applyConvergeOpacity()
-        convergePivot.visible = false
+          convergeLeft.position.set(convergeLayout.holdLeftX, convergeLayout.holdLeftY, 0)
+          convergeRight.position.set(convergeLayout.holdRightX, convergeLayout.holdRightY, 0)
+          convergePivot.rotation.set(0, 0, 0)
+          applyConvergeOpacity()
+          convergePivot.visible = false
 
-        if (window.__pageTL) {
-          const p = window.__pageTL.progress()
-          window.__pageTL.progress(0)
-          window.__pageTL.progress(p)
-        }
-      },
-      undefined,
-      (err) => console.error('Failed to load convergence logo:', err)
-    )
+          if (window.__pageTL) {
+            const p = window.__pageTL.progress()
+            window.__pageTL.progress(0)
+            window.__pageTL.progress(p)
+          }
+        },
+        undefined,
+        (err) => console.error('Failed to load convergence logo:', err)
+      )
+    }
 
     // -----------------------------
     // MASTER scroll timeline
@@ -2177,6 +2204,9 @@ gltfLoader.load(
     const heroOffscreenL = new THREE.Vector3(-heroSplitLimitX, -heroSplitLimitY, 0)
     const heroOffscreenR = new THREE.Vector3(heroSplitLimitX, heroSplitLimitY, 0)
 
+    const hasStickyStatsSection = isStatsStageManaged()
+    const desktopStatsIn = hasStickyStatsSection ? DESKTOP_STATS_IN : 1
+
     // On mobile only hero + about are scroll-animated — use the same TIMING
     // ratios as desktop so the split and about transitions feel identical.
     // Convergence/stats are set to >1 so those tweens never fire on mobile.
@@ -2191,7 +2221,8 @@ gltfLoader.load(
       convergeGrowStart: isMobile() ? 2 : 0.65,
       modelFadeOutStart: isMobile() ? 2 : 0.805,
       modelFadeOut: 0.03,
-      statsIn: isMobile() ? 2 : 0.835,
+      // If stats section is not present, treat convergence as the final sticky phase.
+      statsIn: isMobile() ? 2 : desktopStatsIn,
     }
 
     window.__GENLABS_STAGE_TIMING__ = TIMING
@@ -2253,12 +2284,14 @@ gltfLoader.load(
     // visible by default — don't hide them via GSAP.
     if (!isMobile()) {
       gsap.set(selectors.panelConverge, { autoAlpha: 0 })
-      // Use opacity-only (not autoAlpha) for the stats panel so that GSAP never
-      // sets visibility:hidden on it. visibility:hidden cascades into the lottie SVG
-      // subtree and prevents the animation from painting even when the container
-      // itself has visibility:visible set. opacity:0 is sufficient to hide it while
-      // keeping the lottie renderer active and ready.
-      gsap.set(selectors.panelStats, { opacity: 0, visibility: 'visible' })
+      if (hasStickyStatsSection) {
+        // Use opacity-only (not autoAlpha) for the stats panel so that GSAP never
+        // sets visibility:hidden on it. visibility:hidden cascades into the lottie SVG
+        // subtree and prevents the animation from painting even when the container
+        // itself has visibility:visible set. opacity:0 is sufficient to hide it while
+        // keeping the lottie renderer active and ready.
+        gsap.set(selectors.panelStats, { opacity: 0, visibility: 'visible' })
+      }
       if (hasConvergeLabels) gsap.set('.converge-label', { autoAlpha: 0, y: 18 })
       if (hasConvergeCards) gsap.set('.converge-hover-card', { autoAlpha: 0, scale: 0.96 })
       if (hasConvergeFinalLine) gsap.set('.converge-final', { autoAlpha: 0 })
@@ -2475,12 +2508,14 @@ gltfLoader.load(
         }, TIMING.labelOut)
       }
 
-      tl.to(convergeOpacity, {
-        value: 0,
-        ease: 'power2.out',
-        duration: TIMING.modelFadeOut,
-        onUpdate: applyConvergeOpacity,
-      }, TIMING.modelFadeOutStart)
+      if (hasStickyStatsSection) {
+        tl.to(convergeOpacity, {
+          value: 0,
+          ease: 'power2.out',
+          duration: TIMING.modelFadeOut,
+          onUpdate: applyConvergeOpacity,
+        }, TIMING.modelFadeOutStart)
+      }
 
       // Final message reveal
       if (hasConvergeFinalLine) {
@@ -2501,26 +2536,31 @@ gltfLoader.load(
         }, TIMING.finalTextIn)
       }
 
-      tl.to(selectors.panelConverge, {
-        autoAlpha: 0,
-        ease: 'none',
-        duration: 0.015,
-      }, TIMING.statsIn)
+      if (hasStickyStatsSection) {
+        tl.to(selectors.panelConverge, {
+          autoAlpha: 0,
+          ease: 'none',
+          duration: 0.015,
+        }, TIMING.statsIn)
 
-      tl.to(selectors.panelStats, {
-        opacity: 1,
-        ease: 'none',
-        duration: 0.015,
-        onStart: () => {
-          // Force lottie resize when the stats section becomes visible.
-          // The SVG renderer may have cached stale dimensions while the
-          // section was at opacity:0 / positioned absolutely.
-          const statsLottie = window.__GENLABS_STATS_LOTTIE__
-          if (statsLottie && typeof statsLottie.resize === 'function') {
-            statsLottie.resize()
-          }
-        },
-      }, TIMING.statsIn)
+        tl.to(selectors.panelStats, {
+          opacity: 1,
+          ease: 'none',
+          duration: 0.015,
+          onStart: () => {
+            // Force lottie resize when the stats section becomes visible.
+            // The SVG renderer may have cached stale dimensions while the
+            // section was at opacity:0 / positioned absolutely.
+            const statsLottie = window.__GENLABS_STATS_LOTTIE__
+            if (statsLottie && typeof statsLottie.resize === 'function') {
+              statsLottie.resize()
+            }
+          },
+        }, TIMING.statsIn)
+      } else {
+        // No sticky stats handoff: keep convergence visible at its last frame.
+        // It is hidden instantly by ScrollTrigger onLeave instead of fading out.
+      }
 
     } // end if (!isMobile()) — convergence + stats timeline tweens
 

@@ -112,7 +112,8 @@ body {
 }
 
 #grid-stage-scroll {
-    height: 800vh;
+    /* Reduced runway: sticky stage now covers hero/about/convergence only */
+    height: 520vh;
 }
 
 .panel,
