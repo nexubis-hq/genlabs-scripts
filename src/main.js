@@ -160,7 +160,17 @@ const selectors = {
   underHighlight: '[data-text="about-outro"], .under-highlight, .cc-about .u-text-primary',
 }
 
-const stageTrigger = document.querySelector('#grid-stage') || document.querySelector('#grid-stage-scroll') || document.querySelector('#scroll-spacer') || document.body
+const getStageElements = () => {
+  const stage = document.querySelector('#grid-stage')
+  const runway = document.querySelector('#grid-stage-scroll')
+  const spacer = document.querySelector('#scroll-spacer')
+
+  return {
+    stage,
+    runway,
+    trigger: stage || runway || spacer || document.body,
+  }
+}
 
 if (isWebflowPreviewHost) {
   if ('scrollRestoration' in history) {
@@ -2111,14 +2121,15 @@ gltfLoader.load(
     const timelineConfig = ScrollTrigger
       ? {
         scrollTrigger: {
-          trigger: stageTrigger,
+          trigger: getStageElements().trigger,
           start: 'top top',
           end: () => {
-              const stage = document.querySelector('#grid-stage')
-              const runway = document.querySelector('#grid-stage-scroll')
-              if (stage) return `+=${stage.offsetHeight - window.innerHeight}`
-              return runway ? `+=${runway.offsetHeight}` : `+=${window.innerHeight * scrollEndMultiplier}`
-            },
+            const { stage, runway } = getStageElements()
+            // Prefer full stage scroll distance (sticky viewport + runway), then fallback.
+            if (stage) return `+=${Math.max(0, stage.offsetHeight - window.innerHeight)}`
+            if (runway) return `+=${runway.offsetHeight}`
+            return `+=${window.innerHeight * scrollEndMultiplier}`
+          },
           scrub: 0.8,
           invalidateOnRefresh: true,
           onUpdate: (self) => {
