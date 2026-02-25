@@ -941,6 +941,94 @@ function setupConvergeSectionLottie() {
 
 setupConvergeSectionLottie()
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Convergence section video (.convergence-video) — scroll-driven
+// ─────────────────────────────────────────────────────────────────────────────
+function setupConvergenceVideoScrub() {
+  const video = document.querySelector('.convergence-video')
+  if (!video) return
+
+  let rafId = 0
+  let hasMetadata = false
+  let duration = 0
+  let lastTime = -1
+
+  const clamp01 = (v) => Math.max(0, Math.min(1, v))
+
+  const syncMetadata = () => {
+    const d = video.duration
+    duration = Number.isFinite(d) && d > 0 ? d : 0
+    hasMetadata = duration > 0
+  }
+
+  const seek = (progress) => {
+    if (!hasMetadata || duration <= 0) return
+    const maxTime = Math.max(0, duration - 0.001)
+    const targetTime = clamp01(progress) * maxTime
+    if (Math.abs(targetTime - lastTime) < 1 / 60) return
+    lastTime = targetTime
+    try {
+      video.currentTime = targetTime
+    } catch {
+      // Ignore transient seek errors while metadata is stabilizing.
+    }
+  }
+
+  // We drive the playhead manually via scroll, so disable autoplay looping.
+  video.autoplay = false
+  video.loop = false
+  video.muted = true
+  video.pause()
+  syncMetadata()
+  seek(0)
+
+  video.addEventListener('loadedmetadata', () => {
+    syncMetadata()
+    seek(0)
+  })
+
+  if (isMobile()) {
+    const convergeSection = document.querySelector('.cc-convergence') || document.querySelector('.cc-benefits')
+    if (convergeSection && ScrollTrigger) {
+      ScrollTrigger.create({
+        trigger: convergeSection,
+        start: 'top 80%',
+        end: 'bottom 20%',
+        scrub: 0.6,
+        onUpdate: (self) => {
+          seek(self.progress)
+        },
+      })
+    }
+  } else {
+    const stageToVideo = (stageProgress) => {
+      const timing = window.__GENLABS_STAGE_TIMING__
+      const convergeIn = timing?.convergeIn ?? 0.56
+      const statsIn = timing?.statsIn ?? 0.835
+      const span = Math.max(0.0001, statsIn - convergeIn)
+      return clamp01((stageProgress - convergeIn) / span)
+    }
+
+    const tick = () => {
+      if (!window.__pageTL) {
+        rafId = requestAnimationFrame(tick)
+        return
+      }
+      const p = window.__pageTL.progress()
+      if (typeof p === 'number') {
+        seek(stageToVideo(p))
+      }
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+  }
+
+  window.__GENLABS_CONVERGENCE_VIDEO__ = video
+  window.addEventListener('pagehide', () => { if (rafId) cancelAnimationFrame(rafId) }, { once: true })
+}
+
+setupConvergenceVideoScrub()
+
 function splitElementWords(root) {
   if (!root || root.dataset.splitReady === 'true') {
     return root?.querySelectorAll('.split-word') || []
