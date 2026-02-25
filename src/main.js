@@ -2094,7 +2094,10 @@ gltfLoader.load(
         scrollTrigger: {
           trigger: stageTrigger,
           start: 'top top',
-          end: () => `+=${window.innerHeight * scrollEndMultiplier}`,
+          end: () => {
+              const runway = document.querySelector('#grid-stage-scroll')
+              return runway ? `+=${runway.offsetHeight}` : `+=${window.innerHeight * scrollEndMultiplier}`
+            },
           scrub: 0.8,
           invalidateOnRefresh: true,
           onUpdate: (self) => {
