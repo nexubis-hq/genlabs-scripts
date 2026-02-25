@@ -721,7 +721,6 @@ function setupStatsSectionLottie() {
   console.log('[Stats Lottie] .stats-arc found, starting getWebflowLottie poll')
 
   const LOTTIE_DELAY = 0
-  const LOTTIE_SPAN = 0.10
 
   getWebflowLottie('.stats-arc').then((anim) => {
     if (!anim) {
@@ -787,7 +786,10 @@ function setupStatsSectionLottie() {
       const stageToLottie = (stageProgress) => {
         const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? 0.835
         const start = statsIn + LOTTIE_DELAY
-        return Math.max(0, Math.min(1, (stageProgress - start) / LOTTIE_SPAN))
+        // Span = remaining timeline after statsIn so lottie plays across
+        // the full cc-stats scroll distance, not just 10% of it
+        const span = Math.max(0.01, 1 - statsIn)
+        return Math.max(0, Math.min(1, (stageProgress - start) / span))
       }
 
       let logN = 0
