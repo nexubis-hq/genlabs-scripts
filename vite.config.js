@@ -13,7 +13,12 @@ export default defineConfig({
   // Remove font imports if they're on Webflow
   build: {
     rollupOptions: {
-      external: ['@fontsource/stack-sans-notch']
+      external: ['@fontsource/stack-sans-notch'],
+      output: {
+        entryFileNames: 'assets/index.js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name][extname]',
+      }
     }
   }
 })
