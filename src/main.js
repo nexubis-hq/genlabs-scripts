@@ -13,7 +13,8 @@ import { setupGridAscii, setupGridStackMouseFollow } from './grid.js'
 import { setupFooterAscii } from './footer.js'
 import { setupFeaturesTabs } from './systems.js'
 import { setupViewportSplitTextReveal } from './text.js'
-import lottie from 'lottie-web'
+import { setupNavAnimations } from './nav.js'
+// lottie-web no longer imported — we use Webflow's built-in lottie module
 
 const isWebflowPreviewHost = location.hostname.includes('.webflow.io') || location.hostname.endsWith('webflow.io')
 if (!isWebflowPreviewHost) {
@@ -27,6 +28,12 @@ if (window.__GENLABS_MAIN_BOOTED__) {
   throw new Error('GEN Labs main.js initialized more than once')
 }
 window.__GENLABS_MAIN_BOOTED__ = true
+
+  // ── Scroll-driven lotties ────────────────────────────────────────────────────
+  // Webflow needs data-autoplay="1" to register animations in its lottie module.
+  // We let them init normally, then hijack (pause + goToAndStop) immediately after
+  // grabbing each animation from the registry in setupStatsSectionLottie() and
+  // setupConvergeSectionLottie().
 
 if (ScrollTrigger) {
   gsap.registerPlugin(ScrollTrigger)
@@ -74,12 +81,8 @@ function pick(...selectors) {
 const dom = {
   panelHero: pick('.cc-hero', '.panel-hero'),
   panelUnder: pick('.cc-about', '.panel-under'),
-  panelConverge: pick('.cc-convergence', '.cc-benefits', '.cc-system', '.panel-converge'),
+  panelConverge: pick('.cc-convergence', '.cc-benefits', '.panel-converge'),
   panelStats: pick('.cc-stats'),
-}
-
-if (dom.panelStats) {
-  gsap.set(dom.panelStats, { autoAlpha: 0 })
 }
 
 dom.underCopy = pick('[data-text="about-intro"]', '[data-text="about-into"]', '.under-copy', '.cc-about .h3.u-text-center:not(.u-text-primary)')
@@ -115,7 +118,7 @@ const selectors = {
   heroTitle: '[data-text="hero-title"], .hero-title',
   panelHero: '.cc-hero, .panel-hero',
   panelUnder: '.cc-about, .panel-under',
-  panelConverge: '.cc-convergence, .cc-benefits, .cc-system, .panel-converge',
+  panelConverge: '.cc-convergence, .cc-benefits, .panel-converge',
   panelStats: '.cc-stats',
   underCopy: '[data-text="about-intro"], [data-text="about-into"], .under-copy, .cc-about .h3.u-text-center:not(.u-text-primary)',
   underHighlight: '[data-text="about-outro"], .under-highlight, .cc-about .u-text-primary',
@@ -441,6 +444,7 @@ function setupNavScramble() {
 }
 
 setupNavScramble()
+setupNavAnimations(gsap)
 
 function setupConvergeHoverCards() {
   const panel = document.querySelector(selectors.panelConverge)
@@ -603,67 +607,137 @@ function setupConvergeHoverCards() {
 
 setupConvergeHoverCards()
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared helper: grab a Webflow lottie animation by DOM element selector,
+// pause it, and return it ready for scroll-driven goToAndStop() calls.
+// ─────────────────────────────────────────────────────────────────────────────
+function getWebflowLottie(selector) {
+  return new Promise((resolve) => {
+    let attempts = 0
+    const MAX = 50 // 50 × 100ms = 5s
+
+    const tryFind = () => {
+      try {
+        const wfLottie = window.Webflow?.require?.('lottie')?.lottie
+        if (wfLottie) {
+          const el = document.querySelector(selector)
+          if (el) {
+            const all = wfLottie.getRegisteredAnimations()
+            const match = all?.find(a =>
+              a.wrapper === el || el.contains(a.wrapper) || a.wrapper?.contains(el)
+            )
+            if (match) {
+              match.pause()
+              match.autoplay = false
+              match.loop = false
+              resolve(match)
+              return
+            }
+          }
+        }
+      } catch (_) { /* not ready yet */ }
+
+      if (++attempts < MAX) setTimeout(tryFind, 100)
+      else resolve(null) // gave up
+    }
+
+    if (window.Webflow && typeof window.Webflow.push === 'function') {
+      window.Webflow.push(() => tryFind())
+    } else {
+      tryFind()
+    }
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stats section lottie (.stats-arc) — scroll-driven
+// ─────────────────────────────────────────────────────────────────────────────
 function setupStatsSectionLottie() {
-  const statsSection = document.querySelector('.grid-stage-sticky > .section.cc-stats') || document.querySelector('.section.cc-stats')
-  const statsCanvasSlot = statsSection?.querySelector('.stats_canvas')
-    || document.querySelector('.stats_canvas')
-    || statsSection?.querySelector('[data-component="stats-canvas"]')
-    || document.querySelector('[data-component="stats-canvas"]')
+  if (!document.querySelector('.stats-arc')) return
 
-  if (!statsSection || !statsCanvasSlot) return
+  const LOTTIE_DELAY = 0
+  const LOTTIE_SPAN = 0.10
 
-  const host = statsCanvasSlot instanceof HTMLCanvasElement
-    ? (statsCanvasSlot.parentElement || statsSection)
-    : statsCanvasSlot
+  getWebflowLottie('.stats-arc').then((anim) => {
+    if (!anim) return
 
-  let arcContainer = host.querySelector('.stats-arc')
-  if (!arcContainer) {
-    arcContainer = document.createElement('div')
-    arcContainer.className = 'stats-arc'
-    host.appendChild(arcContainer)
-  }
+    const totalFrames = anim.totalFrames || 1
+    let lastFrame = -1
+    let rafId = 0
 
-  const animation = lottie.loadAnimation({
-    container: arcContainer,
-    renderer: 'svg',
-    loop: false,
-    autoplay: false,
-    path: resolveAssetUrl('/models/stats-arc.json'),
-    rendererSettings: { preserveAspectRatio: 'xMidYMid meet' },
+    const stageToLottie = (stageProgress) => {
+      const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? 0.835
+      const start = statsIn + LOTTIE_DELAY
+      return Math.max(0, Math.min(1, (stageProgress - start) / LOTTIE_SPAN))
+    }
+
+    const seek = (progress) => {
+      const frame = Math.round(Math.max(0, Math.min(1, progress)) * (totalFrames - 1))
+      if (frame === lastFrame) return
+      lastFrame = frame
+      anim.goToAndStop(frame, true)
+    }
+
+    // Park at frame 0
+    anim.goToAndStop(0, true)
+
+    const tick = () => {
+      if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
+      const p = window.__pageTL.progress()
+      if (typeof p === 'number') seek(stageToLottie(p))
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+
+    window.addEventListener('pagehide', () => { if (rafId) cancelAnimationFrame(rafId) }, { once: true })
   })
-
-  let totalFrames = 0
-  const seekToProgress = (progress) => {
-    if (!totalFrames) return
-    const clamped = Math.min(1, Math.max(0, progress))
-    animation.goToAndStop(clamped * (totalFrames - 1), true)
-  }
-
-  animation.addEventListener('DOMLoaded', () => {
-    totalFrames = Math.max(1, Math.floor(animation.getDuration(true)))
-    seekToProgress(0)
-  })
-
-  if (ScrollTrigger && statsSection) {
-    ScrollTrigger.create({
-      trigger: statsSection,
-      start: 'top bottom',
-      end: 'bottom top',
-      scrub: true,
-      onUpdate: (self) => {
-        seekToProgress(self.progress)
-      },
-    })
-  } else {
-    animation.play()
-  }
-
-  window.addEventListener('pagehide', () => {
-    animation.destroy()
-  }, { once: true })
 }
 
 setupStatsSectionLottie()
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Convergence section lottie (.convergence-lottie) — scroll-driven
+// ─────────────────────────────────────────────────────────────────────────────
+function setupConvergeSectionLottie() {
+  if (!document.querySelector('.convergence-lottie')) return
+
+  getWebflowLottie('.convergence-lottie').then((anim) => {
+    if (!anim) return
+
+    const totalFrames = anim.totalFrames || 1
+    let lastFrame = -1
+    let rafId = 0
+
+    const stageToLottie = (stageProgress) => {
+      const timing = window.__GENLABS_STAGE_TIMING__
+      const convergeIn = timing?.convergeIn ?? 0.56
+      const statsIn = timing?.statsIn ?? 0.835
+      return Math.max(0, Math.min(1, (stageProgress - convergeIn) / (statsIn - convergeIn)))
+    }
+
+    const seek = (progress) => {
+      const frame = Math.round(Math.max(0, Math.min(1, progress)) * (totalFrames - 1))
+      if (frame === lastFrame) return
+      lastFrame = frame
+      anim.goToAndStop(frame, true)
+    }
+
+    // Park at frame 0
+    anim.goToAndStop(0, true)
+
+    const tick = () => {
+      if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
+      const p = window.__pageTL.progress()
+      if (typeof p === 'number') seek(stageToLottie(p))
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+
+    window.addEventListener('pagehide', () => { if (rafId) cancelAnimationFrame(rafId) }, { once: true })
+  })
+}
+
+setupConvergeSectionLottie()
 
 function splitElementWords(root) {
   if (!root || root.dataset.splitReady === 'true') {
@@ -895,6 +969,42 @@ setupFeaturesSectionAnimation({
     return (stageProgress - underOutStart) / Math.max(0.0001, 1 - underOutStart)
   },
 })
+
+const enableStatsEarthAscii = false
+
+if (enableStatsEarthAscii) {
+  setupFeaturesSectionAnimation({
+    gsap,
+    canvasSelector: '.cc-stats [data-component="stats-canvas"], [data-component="stats-canvas"]',
+    meshNames: null,
+    modelUrl: resolveAssetUrl('/models/earth.glb'),
+    modelTargetSize: 6.6,
+    modelVerticalOffset: 0,
+    modelVerticalOffsetMobile: 0,
+    stageProgressRange: [0, 1],
+    getStageProgress: () => {
+      const stageProgress = window.__pageTL?.progress()
+      if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
+        return null
+      }
+
+      const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? 0.9
+      return (stageProgress - statsIn) / Math.max(0.0001, 1 - statsIn)
+    },
+    getVisibilityProgress: () => {
+      const stageProgress = window.__pageTL?.progress()
+      if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
+        return null
+      }
+
+      const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? 0.9
+      return (stageProgress - statsIn) / Math.max(0.0001, 1 - statsIn)
+    },
+    visibilityProgressRange: [0, 1],
+    visibilityFadeOutStart: null,
+    useAsciiCrossfade: false,
+  })
+}
 setupRoadmapAscii()
 setupGridAscii()
 setupGridStackMouseFollow()
@@ -1571,18 +1681,17 @@ gltfLoader.load(
     const heroOffscreenR = new THREE.Vector3(heroSplitLimitX, heroSplitLimitY, 0)
 
     const TIMING = {
-      heroSplitOut: 0.40,
-      copySwapStart: 0.32,
-      underOut: 0.58,
-      convergeIn: 0.64,
-      centralizedIn: 0.72,
-      convergeFadeIn: 0.10,
-      convergeGrowStart: 0.74,
-      labelOut: 0.87,
-      modelFadeOutStart: 0.955,
-      modelFadeOut: 0.035,
-      finalTextIn: 0.972,
-      statsIn: 0.985,
+      heroSplitOut:      0.35,
+      copySwapStart:     0.28,
+      underOut:          0.50,
+      convergeIn:        0.56,   // cc-convergence panel + lottie appear
+      convergeGlbStart:  0.63,   // GLB fades in, halves start merging immediately
+      centralizedIn:     0.63,   // same — no static hold
+      convergeFadeIn:    0.06,
+      convergeGrowStart: 0.65,   // grow + zoom 0.02 after GLB entry
+      modelFadeOutStart: 0.805,  // GLB starts fading (0.63 + 0.175 = 1.75vh)
+      modelFadeOut:      0.03,
+      statsIn:           0.835,  // cc-stats appears after GLB fully gone
     }
 
     window.__GENLABS_STAGE_TIMING__ = TIMING
@@ -1594,7 +1703,7 @@ gltfLoader.load(
         scrollTrigger: {
           trigger: stageTrigger,
           start: 'top top',
-          end: () => `+=${window.innerHeight * 8}`,
+          end: () => `+=${window.innerHeight * 10}`,
           scrub: 0.8,
           invalidateOnRefresh: true,
           onUpdate: (self) => {
@@ -1626,7 +1735,12 @@ gltfLoader.load(
     gsap.set(selectors.underCopy, { autoAlpha: 1 })
     gsap.set(selectors.underHighlight, { autoAlpha: 1 })
     gsap.set(selectors.panelConverge, { autoAlpha: 0 })
-    gsap.set(selectors.panelStats, { autoAlpha: 0 })
+    // Use opacity-only (not autoAlpha) for the stats panel so that GSAP never
+    // sets visibility:hidden on it. visibility:hidden cascades into the lottie SVG
+    // subtree and prevents the animation from painting even when the container
+    // itself has visibility:visible set. opacity:0 is sufficient to hide it while
+    // keeping the lottie renderer active and ready.
+    gsap.set(selectors.panelStats, { opacity: 0, visibility: 'visible' })
     if (hasConvergeLabels) gsap.set('.converge-label', { autoAlpha: 0, y: 18 })
     if (hasConvergeCards) gsap.set('.converge-hover-card', { autoAlpha: 0, scale: 0.96 })
     if (hasConvergeFinalLine) gsap.set('.converge-final', { autoAlpha: 0 })
@@ -1749,14 +1863,14 @@ gltfLoader.load(
         pivot.visible = !useConvergenceLogo
         convergePivot.visible = useConvergenceLogo
       },
-    }, TIMING.convergeIn)
+    }, TIMING.convergeGlbStart)
 
     tl.to(convergeOpacity, {
       value: 1,
       ease: 'none',
       duration: TIMING.convergeFadeIn,
       onUpdate: applyConvergeOpacity,
-    }, TIMING.convergeIn)
+    }, TIMING.convergeGlbStart)
 
     const convergeGrowToFadeDuration = Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart)
     const convergeFadeScaleTarget = CONVERGE_GROW_SCALE_FACTOR * 1.35
@@ -1860,7 +1974,7 @@ gltfLoader.load(
     }, TIMING.statsIn)
 
     tl.to(selectors.panelStats, {
-      autoAlpha: 1,
+      opacity: 1,
       ease: 'none',
       duration: 0.015,
     }, TIMING.statsIn)
