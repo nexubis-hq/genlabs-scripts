@@ -723,133 +723,49 @@ function getWebflowLottie(selector) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stats section lottie (.stats-arc) — scroll-driven
+// Stats section lottie (.stats-arc) — Intersection Observer trigger
 // ─────────────────────────────────────────────────────────────────────────────
-const DESKTOP_STATS_IN = 0.835
-
 function setupStatsSectionLottie() {
-  if (!isStatsStageManaged()) {
-    console.log('[Stats Lottie] skipping scroll scrub — stats section is not in .grid-stage-sticky')
-    return
-  }
-
   const arcEl = document.querySelector('.stats-arc')
   if (!arcEl) {
     console.warn('[Stats Lottie] .stats-arc element not found in DOM')
     return
   }
-  console.log('[Stats Lottie] .stats-arc found, starting getWebflowLottie poll')
+  console.log('[Stats Lottie] .stats-arc found, waiting for Webflow lottie')
 
-  const LOTTIE_DELAY = 0
-
+  // Start at first frame and pause (Webflow default behavior)
   getWebflowLottie('.stats-arc').then((anim) => {
     if (!anim) {
       console.warn('[Stats Lottie] ❌ could not find Webflow lottie for .stats-arc after polling')
-      // Log all registered animations for diagnosis
-      try {
-        const all = window.Webflow?.require?.('lottie')?.lottie?.getRegisteredAnimations() ?? []
-        console.log('[Stats Lottie] registered animations:', all.map(a => ({
-          wrapper: a.wrapper?.className,
-          isLoaded: a.isLoaded,
-          totalFrames: a.totalFrames,
-          isPaused: a.isPaused,
-        })))
-      } catch(e) { console.warn('[Stats Lottie] could not read registry:', e) }
       return
     }
 
-    const ip = anim.animationData?.ip ?? 0
-    const op = anim.animationData?.op ?? anim.totalFrames
-    const totalFrames = op - ip
-    let lastFrame = -1
-    let rafId = 0
-    let hasResized = false
-
-    console.log('[Stats Lottie] ✅ found — ip:', ip, 'op:', op, 'totalFrames:', totalFrames,
-      'wrapper:', anim.wrapper?.className,
-      'wrapperRect:', JSON.stringify(anim.wrapper?.getBoundingClientRect()))
-
-    const seek = (progress) => {
-      const frame = Math.round(ip + Math.max(0, Math.min(1, progress)) * totalFrames)
-      if (frame === lastFrame) return
-      lastFrame = frame
-      anim.goToAndStop(frame, true)
-    }
-
-    anim.playSegments([ip, op], true)
+    // Reset to start and pause
+    anim.goToAndStop(0, true)
     anim.pause()
-    anim.goToAndStop(ip, true)
-    if (typeof anim.resize === 'function') anim.resize()
+    console.log('[Stats Lottie] ✅ Webflow lottie ready, paused at frame 0')
 
-    if (isMobile()) {
-      console.log('[Stats Lottie] mobile path — using IntersectionObserver ScrollTrigger')
-      const statsSection = document.querySelector('.cc-stats')
-      if (statsSection && ScrollTrigger) {
-        ScrollTrigger.create({
-          trigger: statsSection,
-          start: 'top 80%',
-          end: 'bottom 20%',
-          scrub: 0.6,
-          onUpdate: (self) => {
-            if (!hasResized && self.progress > 0) {
-              hasResized = true
-              if (typeof anim.resize === 'function') anim.resize()
-            }
-            seek(self.progress)
-          },
-        })
-      } else {
-        console.warn('[Stats Lottie] mobile: .cc-stats not found or no ScrollTrigger', { statsSection, ScrollTrigger })
-      }
-    } else {
-      console.log('[Stats Lottie] desktop path — polling __pageTL')
-      const stageToLottie = (stageProgress) => {
-        const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? DESKTOP_STATS_IN
-        const start = statsIn + LOTTIE_DELAY
-        // Span = remaining timeline after statsIn so lottie plays across
-        // the full cc-stats scroll distance, not just 10% of it
-        const span = Math.max(0.01, 1 - statsIn)
-        return Math.max(0, Math.min(1, (stageProgress - start) / span))
-      }
-
-      let logN = 0
-      const tick = () => {
-        if (!window.__pageTL) {
-          if (logN++ % 120 === 0) console.log('[Stats Lottie] waiting for __pageTL...')
-          rafId = requestAnimationFrame(tick)
-          return
+    // Use Intersection Observer to trigger animation when in view
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          console.log('[Stats Lottie] in view — playing animation')
+          // Play the full animation once
+          anim.play()
+          // Optionally disconnect observer to prevent replaying
+          observer.disconnect()
         }
-        const p = window.__pageTL.progress()
-        if (typeof p === 'number') {
-          const lp = stageToLottie(p)
+      })
+    }, {
+      threshold: 0.3, // Trigger when 30% of element is visible
+      rootMargin: '0px 0px -10% 0px' // Trigger slightly before fully in view
+    })
 
-          if (!hasResized && lp > 0) {
-            hasResized = true
-            console.log('[Stats Lottie] first visible — forcing resize. stage:', p.toFixed(4))
-            if (typeof anim.resize === 'function') anim.resize()
-          }
+    observer.observe(arcEl)
+    console.log('[Stats Lottie] Intersection Observer attached')
 
-          // Log every 2s while lottie is active
-          if (logN++ % 120 === 0) {
-            const runway = document.querySelector('#grid-stage-scroll')
-            console.log('[Stats Lottie] tick —',
-              'stage:', p.toFixed(4),
-              'lottie:', lp.toFixed(4),
-              'frame:', lastFrame,
-              'statsIn:', window.__GENLABS_STAGE_TIMING__?.statsIn,
-              'runwayH:', runway?.offsetHeight,
-              'scrollY:', window.scrollY,
-            )
-          }
-          seek(lp)
-        }
-        rafId = requestAnimationFrame(tick)
-      }
-      rafId = requestAnimationFrame(tick)
-    }
-
+    // Store reference for debugging
     window.__GENLABS_STATS_LOTTIE__ = anim
-    window.addEventListener('pagehide', () => { if (rafId) cancelAnimationFrame(rafId) }, { once: true })
   })
 }
 
