@@ -661,8 +661,10 @@ function setupStatsSectionLottie() {
   getWebflowLottie('.stats-arc').then((anim) => {
     if (!anim) return
 
-    const totalFrames = anim.totalFrames || 1
-    let lastFrame = -1
+    // Use time-based seeking (ms) so we don't need to deal with ip/op frame offsets.
+    // getDuration(false) returns seconds; multiply by 1000 for ms.
+    const durationMs = (anim.getDuration?.(false) || 1) * 1000
+    let lastMs = -1
     let rafId = 0
 
     const stageToLottie = (stageProgress) => {
@@ -672,14 +674,14 @@ function setupStatsSectionLottie() {
     }
 
     const seek = (progress) => {
-      const frame = Math.round(Math.max(0, Math.min(1, progress)) * (totalFrames - 1))
-      if (frame === lastFrame) return
-      lastFrame = frame
-      anim.goToAndStop(frame, true)
+      const ms = Math.round(Math.max(0, Math.min(1, progress)) * durationMs)
+      if (ms === lastMs) return
+      lastMs = ms
+      anim.goToAndStop(ms)
     }
 
-    // Park at frame 0
-    anim.goToAndStop(0, true)
+    // Park at start
+    anim.goToAndStop(0)
 
     const tick = () => {
       if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
@@ -704,8 +706,8 @@ function setupConvergeSectionLottie() {
   getWebflowLottie('.convergence-lottie').then((anim) => {
     if (!anim) return
 
-    const totalFrames = anim.totalFrames || 1
-    let lastFrame = -1
+    const durationMs = (anim.getDuration?.(false) || 1) * 1000
+    let lastMs = -1
     let rafId = 0
 
     const stageToLottie = (stageProgress) => {
@@ -716,14 +718,14 @@ function setupConvergeSectionLottie() {
     }
 
     const seek = (progress) => {
-      const frame = Math.round(Math.max(0, Math.min(1, progress)) * (totalFrames - 1))
-      if (frame === lastFrame) return
-      lastFrame = frame
-      anim.goToAndStop(frame, true)
+      const ms = Math.round(Math.max(0, Math.min(1, progress)) * durationMs)
+      if (ms === lastMs) return
+      lastMs = ms
+      anim.goToAndStop(ms)
     }
 
-    // Park at frame 0
-    anim.goToAndStop(0, true)
+    // Park at start
+    anim.goToAndStop(0)
 
     const tick = () => {
       if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
