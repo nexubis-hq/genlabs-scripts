@@ -40,8 +40,12 @@ function normalizeLabel(label) {
 }
 
 function resolveFeatureModelUrl(fileName) {
-  const moduleOrigin = new URL(import.meta.url).origin
-  return `${moduleOrigin}/models/features/${fileName}`
+  const self = new URL(import.meta.url)
+  const jsdelivrMatch = self.href.match(
+    /^(https:\/\/cdn\.jsdelivr\.net\/gh\/[^/]+\/[^/]+@[^/]+\/dist)\//
+  )
+  const base = jsdelivrMatch ? jsdelivrMatch[1] : self.origin
+  return `${base}/models/features/${fileName}`
 }
 
 function fitModelToTarget(model, targetSize = 3.2) {

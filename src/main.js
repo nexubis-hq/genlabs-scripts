@@ -70,8 +70,21 @@ setupLenis()
 
 const moduleUrl = new URL(import.meta.url)
 
+// When served from jsDelivr the script URL is:
+//   https://cdn.jsdelivr.net/gh/<user>/<repo>@<ref>/dist/assets/index.js
+// Relative paths like /models/foo.glb would resolve to cdn.jsdelivr.net/models/foo.glb
+// which is wrong. We detect this and rebase to the dist/ folder in the repo.
+const _jsdelivrMatch = moduleUrl.href.match(
+  /^(https:\/\/cdn\.jsdelivr\.net\/gh\/[^/]+\/[^/]+@[^/]+\/dist)\//
+)
+const assetBase = _jsdelivrMatch
+  ? _jsdelivrMatch[1]           // e.g. https://cdn.jsdelivr.net/gh/org/repo@master/dist
+  : moduleUrl.href.replace(/\/[^/]+$/, '') // local dev: strip filename, keep directory
+
 function resolveAssetUrl(path) {
-  return new URL(path, moduleUrl).href
+  // Strip leading slash so it works as a relative segment
+  const clean = path.replace(/^\//, '')
+  return `${assetBase}/${clean}`
 }
 
 function pick(...selectors) {

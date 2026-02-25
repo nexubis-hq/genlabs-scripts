@@ -82,9 +82,18 @@ function getFrustumHalfHeightAtWorldZ(camera, worldZ = 0) {
 function resolveModelUrl(url) {
   if (!url) return url
   if (/^https?:\/\//i.test(url)) return url
-  const origin = new URL(import.meta.url).origin
+  // When served from jsDelivr, import.meta.url is:
+  //   https://cdn.jsdelivr.net/gh/<user>/<repo>@<ref>/dist/assets/index.js
+  // We need to resolve relative to dist/, not just the origin.
+  const self = new URL(import.meta.url)
+  const jsdelivrMatch = self.href.match(
+    /^(https:\/\/cdn\.jsdelivr\.net\/gh\/[^/]+\/[^/]+@[^/]+\/dist)\//
+  )
+  const base = jsdelivrMatch
+    ? jsdelivrMatch[1]
+    : self.origin
   const normalized = url.startsWith('/') ? url : `/${url}`
-  return `${origin}${normalized}`
+  return `${base}${normalized}`
 }
 
 export function setupFeaturesSectionAnimation({

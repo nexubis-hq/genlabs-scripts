@@ -181,7 +181,11 @@ export function setupFooterAscii() {
 
   const loader = new GLTFLoader()
   loader.load(
-    new URL('/models/logo_split.glb', import.meta.url).href,
+    (() => {
+      const self = new URL(import.meta.url)
+      const m = self.href.match(/^(https:\/\/cdn\.jsdelivr\.net\/gh\/[^/]+\/[^/]+@[^/]+\/dist)\//)
+      return m ? `${m[1]}/models/logo_split.glb` : `${self.origin}/models/logo_split.glb`
+    })(),
     (gltf) => {
       const model = gltf.scene.clone(true)
       model.traverse((child) => {
