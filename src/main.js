@@ -661,10 +661,12 @@ function setupStatsSectionLottie() {
   getWebflowLottie('.stats-arc').then((anim) => {
     if (!anim) return
 
-    // Use time-based seeking (ms) so we don't need to deal with ip/op frame offsets.
-    // getDuration(false) returns seconds; multiply by 1000 for ms.
-    const durationMs = (anim.getDuration?.(false) || 1) * 1000
-    let lastMs = -1
+    // stats-arc.json: ip=428 op=638 fr=24. goToAndStop(frame, true) uses absolute
+    // frame numbers, so we offset by ip. playSegments resets the internal segment
+    // so subsequent goToAndStop calls work within the content range.
+    const ip = anim.animationData?.ip ?? 0
+    const op = anim.animationData?.op ?? anim.totalFrames
+    let lastFrame = -1
     let rafId = 0
 
     const stageToLottie = (stageProgress) => {
@@ -674,19 +676,28 @@ function setupStatsSectionLottie() {
     }
 
     const seek = (progress) => {
-      const ms = Math.round(Math.max(0, Math.min(1, progress)) * durationMs)
-      if (ms === lastMs) return
-      lastMs = ms
-      anim.goToAndStop(ms)
+      const frame = Math.round(ip + Math.max(0, Math.min(1, progress)) * (op - ip))
+      if (frame === lastFrame) return
+      lastFrame = frame
+      anim.goToAndStop(frame, true)
     }
 
-    // Park at start
-    anim.goToAndStop(0)
+    // Park at first content frame
+    anim.goToAndStop(ip, true)
 
+    console.log('[Stats Lottie] ready — ip:', ip, 'op:', op, 'span:', op - ip)
+
+    let debugN = 0
     const tick = () => {
       if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
       const p = window.__pageTL.progress()
-      if (typeof p === 'number') seek(stageToLottie(p))
+      if (typeof p === 'number') {
+        const lp = stageToLottie(p)
+        if (lp > 0 && debugN++ % 30 === 0) {
+          console.log('[Stats Lottie] stage:', p.toFixed(4), 'lottie:', lp.toFixed(4), 'frame:', lastFrame)
+        }
+        seek(lp)
+      }
       rafId = requestAnimationFrame(tick)
     }
     rafId = requestAnimationFrame(tick)
