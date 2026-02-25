@@ -29,11 +29,11 @@ if (window.__GENLABS_MAIN_BOOTED__) {
 }
 window.__GENLABS_MAIN_BOOTED__ = true
 
-  // ── Scroll-driven lotties ────────────────────────────────────────────────────
-  // Webflow needs data-autoplay="1" to register animations in its lottie module.
-  // We let them init normally, then hijack (pause + goToAndStop) immediately after
-  // grabbing each animation from the registry in setupStatsSectionLottie() and
-  // setupConvergeSectionLottie().
+// ── Scroll-driven lotties ────────────────────────────────────────────────────
+// Webflow needs data-autoplay="1" to register animations in its lottie module.
+// We let them init normally, then hijack (pause + goToAndStop) immediately after
+// grabbing each animation from the registry in setupStatsSectionLottie() and
+// setupConvergeSectionLottie().
 
 if (ScrollTrigger) {
   gsap.registerPlugin(ScrollTrigger)
@@ -1130,6 +1130,206 @@ setupFeaturesSectionAnimation({
   },
 })
 
+  // ── Mobile convergence canvas — logo_split.glb merged + rotating on entry ──
+  ; (function setupMobileConvergenceCanvas() {
+    const canvas = document.querySelector('[data-component="convergence-mobile"]')
+    if (!canvas || !isMobile()) return
+
+    // Size to parent container (.convergence_canvas-wrap)
+    function getContainerSize() {
+      const parent = canvas.parentElement
+      if (parent) {
+        const rect = parent.getBoundingClientRect()
+        if (rect.width > 0 && rect.height > 0) return { width: rect.width, height: rect.height }
+      }
+      return { width: window.innerWidth, height: window.innerHeight }
+    }
+
+    let sizes = getContainerSize()
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    canvas.width = Math.floor(sizes.width * dpr)
+    canvas.height = Math.floor(sizes.height * dpr)
+    canvas.style.width = `${sizes.width}px`
+    canvas.style.height = `${sizes.height}px`
+    canvas.style.opacity = '0'
+
+    const ctx2d = canvas.getContext('2d', { alpha: false })
+    ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx2d.textBaseline = 'top'
+
+    // WebGL renderer (offscreen)
+    const glCanvas = document.createElement('canvas')
+    const renderer3 = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: false })
+    renderer3.setPixelRatio(dpr)
+    renderer3.setSize(sizes.width, sizes.height)
+
+    const scene3 = new THREE.Scene()
+    const camera3 = new THREE.PerspectiveCamera(45, sizes.width / sizes.height, 0.01, 1000)
+    scene3.add(camera3)
+
+    // Lights — same as hero
+    scene3.add(new THREE.AmbientLight(0xffffff, 0.25))
+    const kl = new THREE.DirectionalLight(0xffffff, 1.25); kl.position.set(6, 4, 6); scene3.add(kl)
+    const fl = new THREE.DirectionalLight(0xffffff, 0.35); fl.position.set(-6, 2, 4); scene3.add(fl)
+    const rl = new THREE.DirectionalLight(0xffffff, 0.6); rl.position.set(0, 6, -6); scene3.add(rl)
+
+    // Fractal noise background — same shader as hero
+    const bgU3 = {
+      uTime: { value: 0 }, uScale: { value: 2.4 }, uIntensity: { value: 0.85 },
+      uBase: { value: 0.025 }, uAmp: { value: 0.015 },
+      uResolution: { value: new THREE.Vector2(sizes.width, sizes.height) },
+      uTint: { value: new THREE.Vector3(1, 1, 1) },
+    }
+    const bgMat3 = new THREE.ShaderMaterial({
+      uniforms: bgU3, depthWrite: false, depthTest: false,
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
+      fragmentShader: `
+      varying vec2 vUv;
+      uniform float uTime,uScale,uIntensity,uBase,uAmp; uniform vec2 uResolution; uniform vec3 uTint;
+      float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+      float noise(vec2 p){vec2 i=floor(p),f=fract(p);float a=hash(i),b=hash(i+vec2(1,0)),c=hash(i+vec2(0,1)),d=hash(i+vec2(1,1));vec2 u=f*f*(3.-2.*f);return mix(a,b,u.x)+(c-a)*u.y*(1.-u.x)+(d-b)*u.x*u.y;}
+      float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*noise(p);p*=2.;a*=.5;}return v;}
+      void main(){
+        vec2 uv=vUv-.5; uv.x*=uResolution.x/uResolution.y; float t=uTime;
+        vec2 w=vec2(fbm(uv*(uScale*.75)+vec2(0,t*.1)),fbm(uv*(uScale*.75)+vec2(t*.1,0)));
+        vec2 w2=vec2(fbm((uv+w)*(uScale*.55)+vec2(t*.07,0)),fbm((uv+w)*(uScale*.55)+vec2(0,t*.09)));
+        float n=fbm((uv+.3*w+.18*w2)*uScale+vec2(t*.04,-t*.03));
+        n=pow(n,1.35)*uIntensity;
+        gl_FragColor=vec4(vec3(uBase+n*uAmp)*uTint,1.);
+      }`,
+    })
+    const bgMesh3 = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat3)
+    bgMesh3.frustumCulled = false; bgMesh3.renderOrder = -1000; scene3.add(bgMesh3)
+
+    // Render target + pixel buffer for ASCII
+    let rt3 = null, pb3 = null
+    function rebuildRT3() {
+      const ASCII3 = { cellSize: 5, aspectComp: 0.55 }
+      const cols = Math.max(20, Math.floor(sizes.width / ASCII3.cellSize))
+      const cellW = sizes.width / cols
+      const cellH = cellW / ASCII3.aspectComp
+      const rows = Math.max(20, Math.floor(sizes.height / cellH))
+      if (rt3) rt3.dispose()
+      rt3 = new THREE.WebGLRenderTarget(cols, rows, { depthBuffer: true, stencilBuffer: false })
+      pb3 = new Uint8Array(cols * rows * 4)
+      rebuildRT3.cols = cols; rebuildRT3.rows = rows
+      rebuildRT3.cellW = cellW; rebuildRT3.cellH = cellH
+    }
+    rebuildRT3()
+
+    // ASCII render
+    const ASCII_RAMP = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
+    function renderASCII3() {
+      const { cols, rows, cellW, cellH } = rebuildRT3
+      ctx2d.fillStyle = '#ffffff'; ctx2d.fillRect(0, 0, sizes.width, sizes.height)
+      ctx2d.fillStyle = '#125fee'
+      const fontPx = Math.max(8, Math.floor(cellH * 1.0))
+      ctx2d.font = `${fontPx}px monospace`; ctx2d.textAlign = 'left'
+      const gw = ctx2d.measureText('M').width || 1
+      const sx = cellW / gw
+      ctx2d.save(); ctx2d.scale(sx, 1)
+      const lh = Math.max(cellH, fontPx * 1.05)
+      for (let y = 0; y < rows; y++) {
+        let row = ''
+        for (let x = 0; x < cols; x++) {
+          const yy = rows - 1 - y, i = (yy * cols + x) * 4
+          let v = 0.2126 * (pb3[i] / 255) + 0.7152 * (pb3[i + 1] / 255) + 0.0722 * (pb3[i + 2] / 255)
+          v = Math.min(1, Math.max(0, (v - 0.5) * 1.15 + 0.5))
+          v = Math.min(1, Math.max(0, Math.pow(v, 0.9)))
+          row += ASCII_RAMP[Math.floor(v * (ASCII_RAMP.length - 1))]
+        }
+        ctx2d.fillText(row, 0, y * lh)
+      }
+      ctx2d.restore()
+    }
+
+    // Load model — both halves placed at origin (merged look)
+    const pivot3 = new THREE.Group()
+    scene3.add(pivot3)
+    let modelReady = false
+
+    const mat3 = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.6 })
+
+    new GLTFLoader().load(resolveAssetUrl('/models/logo_split.glb'), (gltf) => {
+      const root = gltf.scene
+      root.updateMatrixWorld(true)
+
+      // Place both halves at origin (merged)
+      root.traverse(child => {
+        if (child.isMesh) { child.material = mat3; child.castShadow = false; child.receiveShadow = false }
+      })
+      pivot3.add(root)
+      pivot3.updateMatrixWorld(true)
+
+      // Center + scale to fill container nicely
+      const box = new THREE.Box3().setFromObject(pivot3)
+      const sz = box.getSize(new THREE.Vector3())
+      const ctr = box.getCenter(new THREE.Vector3())
+      pivot3.position.sub(ctr)
+      const maxD = Math.max(sz.x, sz.y, sz.z)
+      const targetSz = 7
+      pivot3.scale.setScalar(targetSz / maxD)
+      pivot3.updateMatrixWorld(true)
+
+      // Frame camera
+      const box2 = new THREE.Box3().setFromObject(pivot3)
+      const sz2 = box2.getSize(new THREE.Vector3())
+      const maxD2 = Math.max(sz2.x, sz2.y, sz2.z)
+      const fovR = camera3.fov * Math.PI / 180
+      const dist = (maxD2 / 2) / Math.tan(fovR / 2)
+      camera3.position.set(0, maxD2 * 0.2, dist * 1.4)
+      camera3.near = Math.max(0.01, dist / 100)
+      camera3.far = dist * 100
+      camera3.updateProjectionMatrix()
+      camera3.lookAt(0, 0, 0)
+
+      modelReady = true
+    })
+
+    // Fade in on viewport entry
+    let visible = false
+    new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) { visible = true; canvas.style.opacity = '1' }
+      else { visible = false; canvas.style.opacity = '0' }
+    }, { threshold: 0.1 }).observe(canvas)
+
+    // Tick
+    const clock3 = new THREE.Clock()
+    const ROTATE_SPEED = Math.PI * 2 / 12 // same as hero: full rotation in 12s
+
+      ; (function tick3() {
+        requestAnimationFrame(tick3)
+        if (!modelReady || !visible) return
+
+        const t = clock3.getElapsedTime()
+        bgU3.uTime.value = t
+        pivot3.rotation.y = t * ROTATE_SPEED
+
+        renderer3.setRenderTarget(rt3)
+        renderer3.render(scene3, camera3)
+        renderer3.setRenderTarget(null)
+        renderer3.readRenderTargetPixels(rt3, 0, 0, rt3.width, rt3.height, pb3)
+        renderASCII3()
+      })()
+
+    // Resize
+    window.addEventListener('resize', () => {
+      sizes = getContainerSize()
+      const d = Math.min(window.devicePixelRatio || 1, 2)
+      canvas.width = Math.floor(sizes.width * d)
+      canvas.height = Math.floor(sizes.height * d)
+      canvas.style.width = `${sizes.width}px`
+      canvas.style.height = `${sizes.height}px`
+      ctx2d.setTransform(d, 0, 0, d, 0, 0)
+      camera3.aspect = sizes.width / sizes.height
+      camera3.updateProjectionMatrix()
+      renderer3.setSize(sizes.width, sizes.height)
+      bgU3.uResolution.value.set(sizes.width, sizes.height)
+      rebuildRT3()
+    })
+  })()
+
 const enableStatsEarthAscii = false
 
 if (enableStatsEarthAscii) {
@@ -1851,26 +2051,30 @@ gltfLoader.load(
     // ratios as desktop so the split and about transitions feel identical.
     // Convergence/stats are set to >1 so those tweens never fire on mobile.
     const TIMING = {
-      heroSplitOut:      0.35,
-      copySwapStart:     0.28,
-      underOut:          0.50,
-      convergeIn:        isMobile() ? 2 : 0.56,
-      convergeGlbStart:  isMobile() ? 2 : 0.63,
-      centralizedIn:     isMobile() ? 2 : 0.63,
-      convergeFadeIn:    0.06,
+      heroSplitOut: isMobile() ? 0.20 : 0.35,
+      copySwapStart: isMobile() ? 0.40 : 0.28,
+      underOut: isMobile() ? 0.95 : 0.50,
+      convergeIn: isMobile() ? 2 : 0.56,
+      convergeGlbStart: isMobile() ? 2 : 0.63,
+      centralizedIn: isMobile() ? 2 : 0.63,
+      convergeFadeIn: 0.06,
       convergeGrowStart: isMobile() ? 2 : 0.65,
       modelFadeOutStart: isMobile() ? 2 : 0.805,
-      modelFadeOut:      0.03,
-      statsIn:           isMobile() ? 2 : 0.835,
+      modelFadeOut: 0.03,
+      statsIn: isMobile() ? 2 : 0.835,
     }
 
     window.__GENLABS_STAGE_TIMING__ = TIMING
 
     let heroSpinPaused = false
 
-    // Mobile runway is 250vh. The sticky section occupies 100vh so the usable
-    // scroll distance is 150vh = innerHeight * 1.5. Desktop uses innerHeight * 10.
-    const scrollEndMultiplier = isMobile() ? 1.5 : 10
+    // Mobile: end = full #grid-stage-scroll height so progress 1.0 lands exactly
+    // when the sticky releases. underOut=1.0 on mobile so the about exit
+    // coincides with the very end of the scroll runway — no dead space.
+    const mobileRunway = document.querySelector('#grid-stage-scroll')
+    const scrollEndMultiplier = isMobile()
+      ? (mobileRunway ? mobileRunway.offsetHeight / window.innerHeight : 0.75)
+      : 10
 
     const timelineConfig = ScrollTrigger
       ? {
@@ -2017,170 +2221,170 @@ gltfLoader.load(
     // and scroll normally, so they don't need scroll-driven animation.
     if (!isMobile()) {
 
-    // Convergence labels appear
-    tl.to(selectors.panelConverge, {
-      autoAlpha: 1,
-      ease: 'none',
-      duration: 0.02,
-    }, TIMING.convergeIn)
-
-    if (hasConvergeLabels) {
-      tl.to('.converge-label', {
-        autoAlpha: 0,
-        y: 18,
+      // Convergence labels appear
+      tl.to(selectors.panelConverge, {
+        autoAlpha: 1,
         ease: 'none',
+        duration: 0.02,
+      }, TIMING.convergeIn)
+
+      if (hasConvergeLabels) {
+        tl.to('.converge-label', {
+          autoAlpha: 0,
+          y: 18,
+          ease: 'none',
+          duration: 0.001,
+        }, TIMING.convergeIn)
+
+        tl.to('.converge-label-left', {
+          autoAlpha: 1,
+          y: 0,
+          ease: 'power2.out',
+          duration: 0.08,
+        }, TIMING.convergeIn)
+
+        tl.to('.converge-label-right', {
+          autoAlpha: 1,
+          y: 0,
+          ease: 'power2.out',
+          duration: 0.08,
+        }, TIMING.centralizedIn)
+      }
+
+      const phaseHandoff = { value: 0 }
+      tl.to(phaseHandoff, {
+        value: 1,
         duration: 0.001,
-      }, TIMING.convergeIn)
+        ease: 'none',
+        onUpdate: () => {
+          const useConvergenceLogo = phaseHandoff.value > 0.5
+          pivot.visible = !useConvergenceLogo
+          convergePivot.visible = useConvergenceLogo
+        },
+      }, TIMING.convergeGlbStart)
 
-      tl.to('.converge-label-left', {
-        autoAlpha: 1,
-        y: 0,
-        ease: 'power2.out',
-        duration: 0.08,
-      }, TIMING.convergeIn)
+      tl.to(convergeOpacity, {
+        value: 1,
+        ease: 'none',
+        duration: TIMING.convergeFadeIn,
+        onUpdate: applyConvergeOpacity,
+      }, TIMING.convergeGlbStart)
 
-      tl.to('.converge-label-right', {
-        autoAlpha: 1,
+      const convergeGrowToFadeDuration = Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart)
+      const convergeFadeScaleTarget = CONVERGE_GROW_SCALE_FACTOR * 1.35
+
+      tl.to(convergeScaleState, {
+        value: CONVERGE_GROW_SCALE_FACTOR,
+        ease: 'power3.in',
+        duration: convergeGrowToFadeDuration,
+        onUpdate: applyConvergeScale,
+      }, TIMING.convergeGrowStart)
+
+      const convergeMergeDuration = Math.max(0.001, TIMING.modelFadeOutStart - TIMING.centralizedIn)
+      tl.to(convergeLeft.position, {
+        x: 0,
         y: 0,
-        ease: 'power2.out',
-        duration: 0.08,
+        ease: 'power2.inOut',
+        duration: convergeMergeDuration,
       }, TIMING.centralizedIn)
-    }
 
-    const phaseHandoff = { value: 0 }
-    tl.to(phaseHandoff, {
-      value: 1,
-      duration: 0.001,
-      ease: 'none',
-      onUpdate: () => {
-        const useConvergenceLogo = phaseHandoff.value > 0.5
-        pivot.visible = !useConvergenceLogo
-        convergePivot.visible = useConvergenceLogo
-      },
-    }, TIMING.convergeGlbStart)
-
-    tl.to(convergeOpacity, {
-      value: 1,
-      ease: 'none',
-      duration: TIMING.convergeFadeIn,
-      onUpdate: applyConvergeOpacity,
-    }, TIMING.convergeGlbStart)
-
-    const convergeGrowToFadeDuration = Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart)
-    const convergeFadeScaleTarget = CONVERGE_GROW_SCALE_FACTOR * 1.35
-
-    tl.to(convergeScaleState, {
-      value: CONVERGE_GROW_SCALE_FACTOR,
-      ease: 'power3.in',
-      duration: convergeGrowToFadeDuration,
-      onUpdate: applyConvergeScale,
-    }, TIMING.convergeGrowStart)
-
-    const convergeMergeDuration = Math.max(0.001, TIMING.modelFadeOutStart - TIMING.centralizedIn)
-    tl.to(convergeLeft.position, {
-      x: 0,
-      y: 0,
-      ease: 'power2.inOut',
-      duration: convergeMergeDuration,
-    }, TIMING.centralizedIn)
-
-    tl.to(convergeRight.position, {
-      x: 0,
-      y: 0,
-      ease: 'power2.inOut',
-      duration: convergeMergeDuration,
-    }, TIMING.centralizedIn)
-
-    tl.to(convergePivot.rotation, {
-      z: Math.PI * 0.25,
-      ease: 'power2.inOut',
-      duration: Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart),
-    }, TIMING.convergeGrowStart)
-
-    tl.to(camera.position, {
-      y: 0,
-      z: convergeLayout.cameraEndZ,
-      ease: 'power3.in',
-      duration: Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart),
-    }, TIMING.convergeGrowStart)
-
-    tl.to(convergeScaleState, {
-      value: convergeFadeScaleTarget,
-      ease: 'none',
-      duration: Math.max(0.001, TIMING.modelFadeOut),
-      onUpdate: applyConvergeScale,
-    }, TIMING.modelFadeOutStart)
-
-    tl.to({}, {
-      duration: 0.001,
-      onStart: () => {
-        controls.target.set(0, 0, 0)
-        controls.update()
-        camera.lookAt(0, 0, 0)
-      },
-      onReverseComplete: () => {
-        controls.target.set(0, 0, 0)
-        controls.update()
-        camera.lookAt(0, 0, 0)
-      },
-    }, TIMING.convergeIn)
-
-    if (hasConvergeCards) {
-      tl.to('.converge-hover-card', {
-        autoAlpha: 0,
-        scale: 0.96,
-        ease: 'none',
-        duration: 0.03,
-        overwrite: true,
-      }, TIMING.labelOut)
-    }
-
-    tl.to(convergeOpacity, {
-      value: 0,
-      ease: 'power2.out',
-      duration: TIMING.modelFadeOut,
-      onUpdate: applyConvergeOpacity,
-    }, TIMING.modelFadeOutStart)
-
-    // Final message reveal
-    if (hasConvergeFinalLine) {
-      tl.to('.converge-final', {
-        autoAlpha: 1,
-        ease: 'none',
-        duration: 0.05,
-      }, TIMING.finalTextIn)
-    }
-
-    if (textWords.convergeFinal.length) {
-      tl.to(textWords.convergeFinal, {
+      tl.to(convergeRight.position, {
+        x: 0,
         y: 0,
+        ease: 'power2.inOut',
+        duration: convergeMergeDuration,
+      }, TIMING.centralizedIn)
+
+      tl.to(convergePivot.rotation, {
+        z: Math.PI * 0.25,
+        ease: 'power2.inOut',
+        duration: Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart),
+      }, TIMING.convergeGrowStart)
+
+      tl.to(camera.position, {
+        y: 0,
+        z: convergeLayout.cameraEndZ,
+        ease: 'power3.in',
+        duration: Math.max(0.001, TIMING.modelFadeOutStart - TIMING.convergeGrowStart),
+      }, TIMING.convergeGrowStart)
+
+      tl.to(convergeScaleState, {
+        value: convergeFadeScaleTarget,
+        ease: 'none',
+        duration: Math.max(0.001, TIMING.modelFadeOut),
+        onUpdate: applyConvergeScale,
+      }, TIMING.modelFadeOutStart)
+
+      tl.to({}, {
+        duration: 0.001,
+        onStart: () => {
+          controls.target.set(0, 0, 0)
+          controls.update()
+          camera.lookAt(0, 0, 0)
+        },
+        onReverseComplete: () => {
+          controls.target.set(0, 0, 0)
+          controls.update()
+          camera.lookAt(0, 0, 0)
+        },
+      }, TIMING.convergeIn)
+
+      if (hasConvergeCards) {
+        tl.to('.converge-hover-card', {
+          autoAlpha: 0,
+          scale: 0.96,
+          ease: 'none',
+          duration: 0.03,
+          overwrite: true,
+        }, TIMING.labelOut)
+      }
+
+      tl.to(convergeOpacity, {
+        value: 0,
+        ease: 'power2.out',
+        duration: TIMING.modelFadeOut,
+        onUpdate: applyConvergeOpacity,
+      }, TIMING.modelFadeOutStart)
+
+      // Final message reveal
+      if (hasConvergeFinalLine) {
+        tl.to('.converge-final', {
+          autoAlpha: 1,
+          ease: 'none',
+          duration: 0.05,
+        }, TIMING.finalTextIn)
+      }
+
+      if (textWords.convergeFinal.length) {
+        tl.to(textWords.convergeFinal, {
+          y: 0,
+          opacity: 1,
+          ease: 'power3.out',
+          duration: 0.08,
+          stagger: 0.02,
+        }, TIMING.finalTextIn)
+      }
+
+      tl.to(selectors.panelConverge, {
+        autoAlpha: 0,
+        ease: 'none',
+        duration: 0.015,
+      }, TIMING.statsIn)
+
+      tl.to(selectors.panelStats, {
         opacity: 1,
-        ease: 'power3.out',
-        duration: 0.08,
-        stagger: 0.02,
-      }, TIMING.finalTextIn)
-    }
-
-    tl.to(selectors.panelConverge, {
-      autoAlpha: 0,
-      ease: 'none',
-      duration: 0.015,
-    }, TIMING.statsIn)
-
-    tl.to(selectors.panelStats, {
-      opacity: 1,
-      ease: 'none',
-      duration: 0.015,
-      onStart: () => {
-        // Force lottie resize when the stats section becomes visible.
-        // The SVG renderer may have cached stale dimensions while the
-        // section was at opacity:0 / positioned absolutely.
-        const statsLottie = window.__GENLABS_STATS_LOTTIE__
-        if (statsLottie && typeof statsLottie.resize === 'function') {
-          statsLottie.resize()
-        }
-      },
-    }, TIMING.statsIn)
+        ease: 'none',
+        duration: 0.015,
+        onStart: () => {
+          // Force lottie resize when the stats section becomes visible.
+          // The SVG renderer may have cached stale dimensions while the
+          // section was at opacity:0 / positioned absolutely.
+          const statsLottie = window.__GENLABS_STATS_LOTTIE__
+          if (statsLottie && typeof statsLottie.resize === 'function') {
+            statsLottie.resize()
+          }
+        },
+      }, TIMING.statsIn)
 
     } // end if (!isMobile()) — convergence + stats timeline tweens
 

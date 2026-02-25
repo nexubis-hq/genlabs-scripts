@@ -15,9 +15,9 @@ const ASCII_DEFAULTS = {
 }
 
 const FEATURE_PHASE = {
-  enterEnd: 0.4,
-  holdEnd: 0.44,
-  mergeEnd: 0.92,
+  enterEnd:  0.4,
+  holdEnd:   0.44,
+  mergeEnd:  0.92,
   rotateEnd: 0.975,
 }
 
@@ -73,16 +73,39 @@ function getFrustumHalfWidthAtWorldZ(camera, worldZ = 0) {
   return halfHeight * camera.aspect
 }
 
+function getFrustumHalfHeightAtWorldZ(camera, worldZ = 0) {
+  const fovRad = THREE.MathUtils.degToRad(camera.fov)
+  const distance = Math.max(0.001, Math.abs(camera.position.z - worldZ))
+  return Math.tan(fovRad * 0.5) * distance
+}
+
+function resolveModelUrl(url) {
+  if (!url) return url
+  if (/^https?:\/\//i.test(url)) return url
+  const origin = new URL(import.meta.url).origin
+  const normalized = url.startsWith('/') ? url : `/${url}`
+  return `${origin}${normalized}`
+}
+
 export function setupFeaturesSectionAnimation({
   gsap,
-  canvasSelector = '#features',
+  canvasSelector = '#features, .cc-convergence canvas',
   meshNames = { left: 'clogo_L', right: 'clogo_R' },
   modelUrl = '/models/logo_split.glb',
+  modelTargetSize = 7.8,
+  modelVerticalOffset = 0.1,
+  modelVerticalOffsetMobile = null,
+  mobileBreakpoint = 767,
   stageProgressRange = [0.5, 1],
   getStageProgress = () => window.__pageTL?.progress() ?? null,
   getVisibilityProgress = null,
   visibilityProgressRange = [0, 1],
+  visibilityFadeInStart = 0,
+  visibilityFadeInEnd = 0,
+  visibilityFadeOutStart = 0.985,
+  visibilityFadeOutEnd = 1,
   useAsciiCrossfade = true,
+  useContainerSize = false,   // when true, size to parent element instead of window
   asciiOverrides = {},
 } = {}) {
   if (!gsap) return null
@@ -100,10 +123,20 @@ export function setupFeaturesSectionAnimation({
   const ctx = canvas.getContext('2d', { alpha: false })
   if (!ctx) return null
 
-  const sizes = {
-    width: window.innerWidth,
-    height: window.innerHeight,
+  function readContainerSize() {
+    if (useContainerSize) {
+      const parent = canvas.parentElement
+      if (parent) {
+        const rect = parent.getBoundingClientRect()
+        if (rect.width > 0 && rect.height > 0) {
+          return { width: rect.width, height: rect.height }
+        }
+      }
+    }
+    return { width: window.innerWidth, height: window.innerHeight }
   }
+
+  const sizes = readContainerSize()
 
   canvas.style.opacity = '0'
   canvas.style.display = 'block'
@@ -253,6 +286,7 @@ export function setupFeaturesSectionAnimation({
 
   const layout = {
     baseScale: 1,
+    centerY: 0,
     holdLeftX: -1,
     holdRightX: 1,
     holdLeftY: 0,
@@ -265,10 +299,13 @@ export function setupFeaturesSectionAnimation({
 
   const modelState = {
     ready: false,
+    splitMode: true,
   }
 
   const modelMetrics = {
     maxDim: 1,
+    width: 1,
+    height: 1,
     depth: 1,
     leftWidth: 1,
     rightWidth: 1,
@@ -297,6 +334,8 @@ export function setupFeaturesSectionAnimation({
     const rightSize = rightBounds.getSize(new THREE.Vector3())
 
     modelMetrics.maxDim = Math.max(size.x, size.y, size.z, 0.001)
+    modelMetrics.width = Math.max(size.x, 0.001)
+    modelMetrics.height = Math.max(size.y, 0.001)
     modelMetrics.depth = Math.max(size.z, 0.001)
     modelMetrics.leftWidth = Math.max(leftSize.x, 0.001)
     modelMetrics.rightWidth = Math.max(rightSize.x, 0.001)
@@ -305,17 +344,30 @@ export function setupFeaturesSectionAnimation({
   function recalcLayout() {
     if (!modelState.ready) return
 
-    const fovRad = THREE.MathUtils.degToRad(camera.fov)
-    const fitDistance = (modelMetrics.maxDim * 0.5) / Math.tan(fovRad * 0.5)
+    const isMobile = sizes.width <= mobileBreakpoint
+    const verticalOffset = isMobile && typeof modelVerticalOffsetMobile === 'number'
+      ? modelVerticalOffsetMobile
+      : modelVerticalOffset
 
-    layout.cameraStartZ = fitDistance * 1.45
-    layout.cameraEndZ = -Math.max(modelMetrics.maxDim * 2.6, fitDistance * 1.4)
+    const fovRad = THREE.MathUtils.degToRad(camera.fov)
+    const halfV = Math.tan(fovRad * 0.5)
+    const halfH = Math.max(0.0001, halfV * camera.aspect)
+    const fitDistanceY = (modelMetrics.height * 0.5) / Math.max(0.0001, halfV)
+    const fitDistanceX = (modelMetrics.width * 0.5) / halfH
+    const fitDistance = Math.max(fitDistanceX, fitDistanceY)
+
+    layout.cameraStartZ = fitDistance * (isMobile ? 1.7 : 1.45)
+    layout.cameraEndZ = -Math.max(modelMetrics.maxDim * (isMobile ? 2.3 : 2.6), fitDistance * (isMobile ? 1.2 : 1.4))
 
     camera.position.set(0, 0, layout.cameraStartZ)
     camera.rotation.set(0, 0, 0)
     camera.near = 0.01
     camera.far = Math.max(2000, Math.abs(layout.cameraEndZ) * 4)
     camera.updateProjectionMatrix()
+
+    const frustumHalfHeight = getFrustumHalfHeightAtWorldZ(camera, 0)
+    layout.centerY = frustumHalfHeight * verticalOffset
+    logoGroup.position.set(0, layout.centerY, 0)
 
     const frustumHalfWidth = getFrustumHalfWidthAtWorldZ(camera, 0)
     const edgeMargin = Math.max(0.01, Math.min(0.05, frustumHalfWidth * 0.004))
@@ -333,26 +385,29 @@ export function setupFeaturesSectionAnimation({
   }
 
   loader.load(
-    modelUrl,
+    resolveModelUrl(modelUrl),
     (gltf) => {
       const root = gltf.scene
       root.updateMatrixWorld(true)
 
-      const leftObject = root.getObjectByName(meshNames.left)
-      const rightObject = root.getObjectByName(meshNames.right)
-
-      if (!leftObject || !rightObject) {
-        console.error(`[features] Missing meshes ${meshNames.left} / ${meshNames.right} in`, modelUrl)
-        return
-      }
-
-      leftObject.removeFromParent()
-      rightObject.removeFromParent()
-
       logoLeft.clear()
       logoRight.clear()
-      logoLeft.add(leftObject)
-      logoRight.add(rightObject)
+
+      const leftName = meshNames?.left
+      const rightName = meshNames?.right
+      const leftObject = leftName ? root.getObjectByName(leftName) : null
+      const rightObject = rightName ? root.getObjectByName(rightName) : null
+
+      if (leftObject && rightObject) {
+        leftObject.removeFromParent()
+        rightObject.removeFromParent()
+        logoLeft.add(leftObject)
+        logoRight.add(rightObject)
+        modelState.splitMode = true
+      } else {
+        logoLeft.add(root)
+        modelState.splitMode = false
+      }
 
       pivot.updateMatrixWorld(true)
       const initialBounds = new THREE.Box3().setFromObject(pivot)
@@ -362,7 +417,7 @@ export function setupFeaturesSectionAnimation({
       pivot.position.sub(initialCenter)
 
       const maxInitialDim = Math.max(initialSize.x, initialSize.y, initialSize.z, 0.001)
-      layout.baseScale = 7.8 / maxInitialDim
+      layout.baseScale = modelTargetSize / maxInitialDim
       pivot.scale.setScalar(layout.baseScale)
 
       pivot.traverse((child) => {
@@ -473,6 +528,21 @@ export function setupFeaturesSectionAnimation({
 
     const p = clamp(progress, 0, 1)
 
+    if (!modelState.splitMode) {
+      logoLeft.position.set(0, 0, 0)
+      logoRight.position.set(0, 0, 0)
+
+      const throughT = easeInCubic(mapRange(p, FEATURE_PHASE.rotateEnd, 1))
+      const spin = easeInOutCubic(mapRange(p, 0, FEATURE_PHASE.rotateEnd))
+
+      pivot.rotation.set(0, mix(0, Math.PI * 0.85, spin), mix(0, Math.PI * 0.12, spin))
+      pivot.scale.setScalar(layout.baseScale * mix(1, 1.35, throughT))
+
+      camera.position.set(0, 0, mix(layout.cameraStartZ, layout.cameraEndZ, throughT))
+      camera.rotation.set(0, 0, 0)
+      return
+    }
+
     let leftX = layout.startLeftX
     let rightX = layout.startRightX
     let leftY = layout.holdLeftY
@@ -507,8 +577,14 @@ export function setupFeaturesSectionAnimation({
   }
 
   function computeVisibility(progress) {
-    const fadeIn = progress >= 0 ? 1 : 0
-    const fadeOut = 1 - mapRange(progress, 0.985, 1)
+    const fadeIn = visibilityFadeInEnd > visibilityFadeInStart
+      ? mapRange(progress, visibilityFadeInStart, visibilityFadeInEnd)
+      : progress >= visibilityFadeInStart ? 1 : 0
+
+    const fadeOut = visibilityFadeOutStart === null
+      ? 1
+      : 1 - mapRange(progress, visibilityFadeOutStart, visibilityFadeOutEnd)
+
     return clamp(fadeIn * fadeOut, 0, 1)
   }
 
@@ -569,8 +645,9 @@ export function setupFeaturesSectionAnimation({
   tick()
 
   window.addEventListener('resize', () => {
-    sizes.width = window.innerWidth
-    sizes.height = window.innerHeight
+    const newSizes = readContainerSize()
+    sizes.width = newSizes.width
+    sizes.height = newSizes.height
 
     camera.aspect = sizes.width / sizes.height
     camera.updateProjectionMatrix()
