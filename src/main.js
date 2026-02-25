@@ -78,11 +78,10 @@ const _jsdelivrMatch = moduleUrl.href.match(
   /^(https:\/\/cdn\.jsdelivr\.net\/gh\/[^/]+\/[^/]+@[^/]+\/dist)\//
 )
 const assetBase = _jsdelivrMatch
-  ? _jsdelivrMatch[1]           // e.g. https://cdn.jsdelivr.net/gh/org/repo@master/dist
-  : moduleUrl.href.replace(/\/[^/]+$/, '') // local dev: strip filename, keep directory
+  ? _jsdelivrMatch[1]   // jsDelivr: https://cdn.jsdelivr.net/gh/org/repo@ref/dist
+  : moduleUrl.origin    // local dev / Webflow: use origin root
 
 function resolveAssetUrl(path) {
-  // Strip leading slash so it works as a relative segment
   const clean = path.replace(/^\//, '')
   return `${assetBase}/${clean}`
 }
