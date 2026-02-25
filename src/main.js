@@ -96,6 +96,30 @@ if (dom.underHighlight) {
   dom.underHighlight.dataset.splitIgnore = 'true'
 }
 
+// ── Mobile breakpoint ─────────────────────────────────────────────────────
+const MOBILE_BREAKPOINT = 940
+const isMobile = () => window.innerWidth <= MOBILE_BREAKPOINT
+
+// ── Immediately hide panels that will be scroll-revealed ──────────────────
+// This runs at module-load time (before GLB loads) to prevent the convergence
+// and stats lotties from being visible while Webflow autoplays them.
+// The GSAP stage timeline will reveal them at the correct scroll position.
+// On mobile these sections are pulled out of the sticky container and scroll
+// normally, so we leave them visible.
+if (!isMobile()) {
+  if (dom.panelConverge) {
+    dom.panelConverge.style.opacity = '0'
+  }
+  if (dom.panelStats) {
+    dom.panelStats.style.opacity = '0'
+    dom.panelStats.style.visibility = 'visible' // keep lottie renderer active
+  }
+}
+
+// Mobile versions of cc-convergence and cc-stats are handled entirely in
+// Webflow — separate mobile-specific sections are shown/hidden via Webflow's
+// visibility settings. No DOM manipulation needed here.
+
 const fontReady = document.fonts?.ready || Promise.resolve()
 fontReady.then(() => {
   let attempts = 0
@@ -609,12 +633,22 @@ setupConvergeHoverCards()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helper: grab a Webflow lottie animation by DOM element selector,
-// pause it, and return it ready for scroll-driven goToAndStop() calls.
+// hijack it for scroll-driven control, and return it.
+//
+// Strategy: Webflow MUST be allowed to autoplay (data-autoplay="1") because
+// that is the trigger for its lottie module to actually fetch the JSON and
+// call lottie.loadAnimation(). If we set data-autoplay="0" before Webflow
+// runs, the animation never loads at all.
+//
+// Instead we let Webflow autoplay normally, then as soon as the animation is
+// registered and loaded we immediately stop() + goToAndStop(0) to reset it.
+// The brief autoplay flash is invisible because the .cc-convergence and
+// .cc-stats sections both start at opacity:0 via the GSAP stage timeline.
 // ─────────────────────────────────────────────────────────────────────────────
 function getWebflowLottie(selector) {
   return new Promise((resolve) => {
     let attempts = 0
-    const MAX = 50 // 50 × 100ms = 5s
+    const MAX = 80 // 80 × 100ms = 8s
 
     const tryFind = () => {
       try {
@@ -623,22 +657,36 @@ function getWebflowLottie(selector) {
           const el = document.querySelector(selector)
           if (el) {
             const all = wfLottie.getRegisteredAnimations()
-            const match = all?.find(a =>
-              a.wrapper === el || el.contains(a.wrapper) || a.wrapper?.contains(el)
-            )
-            if (match) {
+            const match = all?.find(a => {
+              if (!a.wrapper) return false
+              return a.wrapper === el || el.contains(a.wrapper) || a.wrapper.contains(el)
+            })
+            if (match && match.isLoaded !== false && (match.animationData || match.totalFrames > 0)) {
+              // Seize control: pause playback (NOT stop — stop() clears the
+              // SVG renderer in lottie-web), disable autoplay and loop so
+              // Webflow's internal controller won't re-trigger.
               match.pause()
               match.autoplay = false
               match.loop = false
+              // Reset to first content frame — scroll code drives from here.
+              // Use goToAndStop with isFrame=true for precise frame control.
+              const ip = match.animationData?.ip ?? 0
+              match.goToAndStop(ip, true)
+              console.log(`[getWebflowLottie] found "${selector}" after ${attempts + 1} attempts, totalFrames:`, match.totalFrames, 'currentFrame:', match.currentFrame)
               resolve(match)
               return
             }
           }
         }
-      } catch (_) { /* not ready yet */ }
+      } catch (e) {
+        if (attempts % 20 === 0) console.warn(`[getWebflowLottie] polling "${selector}", attempt ${attempts}:`, e.message)
+      }
 
       if (++attempts < MAX) setTimeout(tryFind, 100)
-      else resolve(null) // gave up
+      else {
+        console.warn(`[getWebflowLottie] gave up looking for "${selector}" after ${MAX} attempts`)
+        resolve(null)
+      }
     }
 
     if (window.Webflow && typeof window.Webflow.push === 'function') {
@@ -659,48 +707,95 @@ function setupStatsSectionLottie() {
   const LOTTIE_SPAN = 0.10
 
   getWebflowLottie('.stats-arc').then((anim) => {
-    if (!anim) return
+    if (!anim) {
+      console.warn('[Stats Lottie] could not find Webflow lottie for .stats-arc')
+      return
+    }
 
     // stats-arc.json: ip=428 op=638 fr=24. goToAndStop(frame, true) uses absolute
     // frame numbers, so we offset by ip. playSegments resets the internal segment
     // so subsequent goToAndStop calls work within the content range.
     const ip = anim.animationData?.ip ?? 0
     const op = anim.animationData?.op ?? anim.totalFrames
+    const totalFrames = op - ip
     let lastFrame = -1
     let rafId = 0
-
-    const stageToLottie = (stageProgress) => {
-      const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? 0.835
-      const start = statsIn + LOTTIE_DELAY
-      return Math.max(0, Math.min(1, (stageProgress - start) / LOTTIE_SPAN))
-    }
+    let hasResized = false
 
     const seek = (progress) => {
-      const frame = Math.round(ip + Math.max(0, Math.min(1, progress)) * (op - ip))
+      const frame = Math.round(ip + Math.max(0, Math.min(1, progress)) * totalFrames)
       if (frame === lastFrame) return
       lastFrame = frame
       anim.goToAndStop(frame, true)
     }
 
-    // Park at first content frame
+    // Reset animation to a clean state: use playSegments to define the active
+    // frame range, then immediately pause. This ensures lottie-web's internal
+    // segment boundaries are set correctly and goToAndStop works as expected.
+    anim.playSegments([ip, op], true)
+    anim.pause()
     anim.goToAndStop(ip, true)
 
-    console.log('[Stats Lottie] ready — ip:', ip, 'op:', op, 'span:', op - ip)
+    // Force a resize so the SVG renderer measures the container correctly even
+    // while the .cc-stats section is at opacity:0 / positioned absolutely.
+    if (typeof anim.resize === 'function') anim.resize()
 
-    let debugN = 0
-    const tick = () => {
-      if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
-      const p = window.__pageTL.progress()
-      if (typeof p === 'number') {
-        const lp = stageToLottie(p)
-        if (lp > 0 && debugN++ % 30 === 0) {
-          console.log('[Stats Lottie] stage:', p.toFixed(4), 'lottie:', lp.toFixed(4), 'frame:', lastFrame)
+    console.log('[Stats Lottie] ready — ip:', ip, 'op:', op, 'span:', totalFrames, 'totalFrames:', anim.totalFrames)
+
+    // On mobile, drive the lottie with its own ScrollTrigger based on viewport
+    // visibility (the section scrolls normally). On desktop, scrub via the
+    // master stage timeline progress.
+    if (isMobile()) {
+      const statsSection = document.querySelector('.cc-stats')
+      if (statsSection && ScrollTrigger) {
+        ScrollTrigger.create({
+          trigger: statsSection,
+          start: 'top 80%',
+          end: 'bottom 20%',
+          scrub: 0.6,
+          onUpdate: (self) => {
+            if (!hasResized && self.progress > 0) {
+              hasResized = true
+              if (typeof anim.resize === 'function') anim.resize()
+            }
+            seek(self.progress)
+          },
+        })
+      }
+    } else {
+      const stageToLottie = (stageProgress) => {
+        const statsIn = window.__GENLABS_STAGE_TIMING__?.statsIn ?? 0.835
+        const start = statsIn + LOTTIE_DELAY
+        return Math.max(0, Math.min(1, (stageProgress - start) / LOTTIE_SPAN))
+      }
+
+      let debugN = 0
+      const tick = () => {
+        if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
+        const p = window.__pageTL.progress()
+        if (typeof p === 'number') {
+          const lp = stageToLottie(p)
+
+          // When the stats section first becomes visible (lp > 0), force a resize
+          // on the lottie renderer. The .cc-stats section starts at opacity:0 and
+          // the SVG may have been laid out with stale dimensions.
+          if (lp > 0 && !hasResized) {
+            hasResized = true
+            if (typeof anim.resize === 'function') anim.resize()
+          }
+
+          if (lp > 0 && debugN++ % 30 === 0) {
+            console.log('[Stats Lottie] stage:', p.toFixed(4), 'lottie:', lp.toFixed(4), 'frame:', lastFrame)
+          }
+          seek(lp)
         }
-        seek(lp)
+        rafId = requestAnimationFrame(tick)
       }
       rafId = requestAnimationFrame(tick)
     }
-    rafId = requestAnimationFrame(tick)
+
+    // Expose for debugging
+    window.__GENLABS_STATS_LOTTIE__ = anim
 
     window.addEventListener('pagehide', () => { if (rafId) cancelAnimationFrame(rafId) }, { once: true })
   })
@@ -715,36 +810,88 @@ function setupConvergeSectionLottie() {
   if (!document.querySelector('.convergence-lottie')) return
 
   getWebflowLottie('.convergence-lottie').then((anim) => {
-    if (!anim) return
-
-    const durationMs = (anim.getDuration?.(false) || 1) * 1000
-    let lastMs = -1
-    let rafId = 0
-
-    const stageToLottie = (stageProgress) => {
-      const timing = window.__GENLABS_STAGE_TIMING__
-      const convergeIn = timing?.convergeIn ?? 0.56
-      const statsIn = timing?.statsIn ?? 0.835
-      return Math.max(0, Math.min(1, (stageProgress - convergeIn) / (statsIn - convergeIn)))
+    if (!anim) {
+      console.warn('[Convergence Lottie] could not find Webflow lottie for .convergence-lottie')
+      return
     }
+
+    // Use frame-based seeking (same approach as stats lottie) instead of
+    // millisecond-based. The convergence JSON has data-duration="0" which
+    // made getDuration() return 0 and broke the ms-based seek math.
+    const ip = anim.animationData?.ip ?? 0
+    const op = anim.animationData?.op ?? anim.totalFrames
+    const totalFrames = op - ip
+    let lastFrame = -1
+    let rafId = 0
+    let hasResized = false
 
     const seek = (progress) => {
-      const ms = Math.round(Math.max(0, Math.min(1, progress)) * durationMs)
-      if (ms === lastMs) return
-      lastMs = ms
-      anim.goToAndStop(ms)
+      const frame = Math.round(ip + Math.max(0, Math.min(1, progress)) * totalFrames)
+      if (frame === lastFrame) return
+      lastFrame = frame
+      anim.goToAndStop(frame, true)
     }
 
-    // Park at start
-    anim.goToAndStop(0)
+    // Reset animation to a clean state: use playSegments to define the active
+    // frame range, then immediately pause and park at the first frame.
+    anim.playSegments([ip, op], true)
+    anim.pause()
+    anim.goToAndStop(ip, true)
 
-    const tick = () => {
-      if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
-      const p = window.__pageTL.progress()
-      if (typeof p === 'number') seek(stageToLottie(p))
+    // Force initial resize in case the cc-convergence section has stale dimensions
+    if (typeof anim.resize === 'function') anim.resize()
+
+    console.log('[Convergence Lottie] ready — ip:', ip, 'op:', op, 'span:', totalFrames, 'totalFrames:', anim.totalFrames)
+
+    // On mobile, drive the lottie with its own ScrollTrigger based on viewport
+    // visibility (the section scrolls normally). On desktop, scrub via the
+    // master stage timeline progress.
+    if (isMobile()) {
+      const convergeSection = document.querySelector('.cc-convergence') || document.querySelector('.cc-benefits')
+      if (convergeSection && ScrollTrigger) {
+        ScrollTrigger.create({
+          trigger: convergeSection,
+          start: 'top 80%',
+          end: 'bottom 20%',
+          scrub: 0.6,
+          onUpdate: (self) => {
+            if (!hasResized && self.progress > 0) {
+              hasResized = true
+              if (typeof anim.resize === 'function') anim.resize()
+            }
+            seek(self.progress)
+          },
+        })
+      }
+    } else {
+      const stageToLottie = (stageProgress) => {
+        const timing = window.__GENLABS_STAGE_TIMING__
+        const convergeIn = timing?.convergeIn ?? 0.56
+        const statsIn = timing?.statsIn ?? 0.835
+        return Math.max(0, Math.min(1, (stageProgress - convergeIn) / (statsIn - convergeIn)))
+      }
+
+      const tick = () => {
+        if (!window.__pageTL) { rafId = requestAnimationFrame(tick); return }
+        const p = window.__pageTL.progress()
+        if (typeof p === 'number') {
+          const lp = stageToLottie(p)
+
+          // Force resize the first time the convergence section becomes visible
+          if (lp > 0 && !hasResized) {
+            hasResized = true
+            if (typeof anim.resize === 'function') anim.resize()
+          }
+
+          seek(lp)
+        }
+        rafId = requestAnimationFrame(tick)
+      }
       rafId = requestAnimationFrame(tick)
     }
-    rafId = requestAnimationFrame(tick)
+
+    // Expose for debugging
+    window.__GENLABS_CONVERGE_LOTTIE__ = anim
 
     window.addEventListener('pagehide', () => { if (rafId) cancelAnimationFrame(rafId) }, { once: true })
   })
@@ -1470,11 +1617,18 @@ gltfLoader.load(
     // Center pivot contents at origin
     pivot.position.sub(center)
 
-    // Scale to target size
+    // Scale to target size (smaller on mobile so model doesn't overlap text)
     const maxDim = Math.max(size.x, size.y, size.z)
-    const targetSize = 10
+    const targetSize = isMobile() ? 6.5 : 10
     const s = targetSize / maxDim
     pivot.scale.setScalar(s)
+
+    // On mobile: shift the entire logoGroup down so the model renders
+    // in the bottom portion of the viewport, below the heading text.
+    // We move the group (not the camera) so the camera still looks
+    // straight at the model and the split animation stays correct.
+    const mobileModelYShift = isMobile() ? -3.0 : 0
+    logoGroup.position.set(0, mobileModelYShift, 0)
 
     pivot.updateMatrixWorld(true)
 
@@ -1486,12 +1640,12 @@ gltfLoader.load(
     const fov = camera.fov * (Math.PI / 180)
     const distance = (maxDim2 / 2) / Math.tan(fov / 2)
 
-    camera.position.set(0, maxDim2 * 0.2, distance * 1.4)
+    camera.position.set(0, mobileModelYShift + maxDim2 * 0.2, distance * 1.4)
     camera.near = Math.max(0.01, distance / 100)
     camera.far = distance * 100
     camera.updateProjectionMatrix()
 
-    controls.target.set(0, 0, 0)
+    controls.target.set(0, mobileModelYShift, 0)
     controls.update()
 
     const heroCameraY = camera.position.y
@@ -1693,30 +1847,37 @@ gltfLoader.load(
     const heroOffscreenL = new THREE.Vector3(-heroSplitLimitX, -heroSplitLimitY, 0)
     const heroOffscreenR = new THREE.Vector3(heroSplitLimitX, heroSplitLimitY, 0)
 
+    // On mobile only hero + about are scroll-animated — use the same TIMING
+    // ratios as desktop so the split and about transitions feel identical.
+    // Convergence/stats are set to >1 so those tweens never fire on mobile.
     const TIMING = {
       heroSplitOut:      0.35,
       copySwapStart:     0.28,
       underOut:          0.50,
-      convergeIn:        0.56,   // cc-convergence panel + lottie appear
-      convergeGlbStart:  0.63,   // GLB fades in, halves start merging immediately
-      centralizedIn:     0.63,   // same — no static hold
+      convergeIn:        isMobile() ? 2 : 0.56,
+      convergeGlbStart:  isMobile() ? 2 : 0.63,
+      centralizedIn:     isMobile() ? 2 : 0.63,
       convergeFadeIn:    0.06,
-      convergeGrowStart: 0.65,   // grow + zoom 0.02 after GLB entry
-      modelFadeOutStart: 0.805,  // GLB starts fading (0.63 + 0.175 = 1.75vh)
+      convergeGrowStart: isMobile() ? 2 : 0.65,
+      modelFadeOutStart: isMobile() ? 2 : 0.805,
       modelFadeOut:      0.03,
-      statsIn:           0.835,  // cc-stats appears after GLB fully gone
+      statsIn:           isMobile() ? 2 : 0.835,
     }
 
     window.__GENLABS_STAGE_TIMING__ = TIMING
 
     let heroSpinPaused = false
 
+    // Mobile runway is 250vh. The sticky section occupies 100vh so the usable
+    // scroll distance is 150vh = innerHeight * 1.5. Desktop uses innerHeight * 10.
+    const scrollEndMultiplier = isMobile() ? 1.5 : 10
+
     const timelineConfig = ScrollTrigger
       ? {
         scrollTrigger: {
           trigger: stageTrigger,
           start: 'top top',
-          end: () => `+=${window.innerHeight * 10}`,
+          end: () => `+=${window.innerHeight * scrollEndMultiplier}`,
           scrub: 0.8,
           invalidateOnRefresh: true,
           onUpdate: (self) => {
@@ -1747,16 +1908,21 @@ gltfLoader.load(
     gsap.set(selectors.panelUnder, { autoAlpha: 0, y: 40 })
     gsap.set(selectors.underCopy, { autoAlpha: 1 })
     gsap.set(selectors.underHighlight, { autoAlpha: 1 })
-    gsap.set(selectors.panelConverge, { autoAlpha: 0 })
-    // Use opacity-only (not autoAlpha) for the stats panel so that GSAP never
-    // sets visibility:hidden on it. visibility:hidden cascades into the lottie SVG
-    // subtree and prevents the animation from painting even when the container
-    // itself has visibility:visible set. opacity:0 is sufficient to hide it while
-    // keeping the lottie renderer active and ready.
-    gsap.set(selectors.panelStats, { opacity: 0, visibility: 'visible' })
-    if (hasConvergeLabels) gsap.set('.converge-label', { autoAlpha: 0, y: 18 })
-    if (hasConvergeCards) gsap.set('.converge-hover-card', { autoAlpha: 0, scale: 0.96 })
-    if (hasConvergeFinalLine) gsap.set('.converge-final', { autoAlpha: 0 })
+
+    // On mobile, convergence + stats are outside the sticky container and
+    // visible by default — don't hide them via GSAP.
+    if (!isMobile()) {
+      gsap.set(selectors.panelConverge, { autoAlpha: 0 })
+      // Use opacity-only (not autoAlpha) for the stats panel so that GSAP never
+      // sets visibility:hidden on it. visibility:hidden cascades into the lottie SVG
+      // subtree and prevents the animation from painting even when the container
+      // itself has visibility:visible set. opacity:0 is sufficient to hide it while
+      // keeping the lottie renderer active and ready.
+      gsap.set(selectors.panelStats, { opacity: 0, visibility: 'visible' })
+      if (hasConvergeLabels) gsap.set('.converge-label', { autoAlpha: 0, y: 18 })
+      if (hasConvergeCards) gsap.set('.converge-hover-card', { autoAlpha: 0, scale: 0.96 })
+      if (hasConvergeFinalLine) gsap.set('.converge-final', { autoAlpha: 0 })
+    }
 
     // 0% -> 15% : hero OUT (fully gone by 15%)
     tl.to(selectors.panelHero, {
@@ -1811,9 +1977,45 @@ gltfLoader.load(
       duration: 0.06
     }, TIMING.underOut)
 
-    tl.set(selectors.panelUnder, {
-      autoAlpha: 0,
-    }, TIMING.convergeIn)
+    if (!isMobile()) {
+      tl.set(selectors.panelUnder, {
+        autoAlpha: 0,
+      }, TIMING.convergeIn)
+    }
+
+    // Logo halves split outward during the hero phase (runs on all breakpoints)
+    tl.to(logoLeft.position, {
+      x: heroOffscreenL.x, y: heroOffscreenL.y, z: heroOffscreenL.z,
+      ease: 'none',
+      duration: TIMING.heroSplitOut
+    }, 0.0)
+
+    tl.to(logoRight.position, {
+      x: heroOffscreenR.x, y: heroOffscreenR.y, z: heroOffscreenR.z,
+      ease: 'none',
+      duration: TIMING.heroSplitOut
+    }, 0.0)
+
+    // Hero logo rotates 45deg as it goes off-frame (runs on all breakpoints)
+    tl.to(pivot.rotation, {
+      z: Math.PI * 0.25,
+      ease: 'power2.out',
+      duration: 0.08,
+    }, TIMING.underOut)
+
+    // On mobile: fade the entire hero GLB out as cc-about exits so it doesn't
+    // hang on screen. On desktop the convergence sequence handles this.
+    if (isMobile()) {
+      tl.to(pivot, {
+        visible: false,
+        duration: 0.001,
+      }, TIMING.underOut + 0.07)
+    }
+
+    // ── Convergence + stats timeline tweens (desktop only) ──
+    // On mobile these sections have been moved out of the sticky container
+    // and scroll normally, so they don't need scroll-driven animation.
+    if (!isMobile()) {
 
     // Convergence labels appear
     tl.to(selectors.panelConverge, {
@@ -1844,27 +2046,6 @@ gltfLoader.load(
         duration: 0.08,
       }, TIMING.centralizedIn)
     }
-
-
-    // Logo halves split outward during the hero phase
-    tl.to(logoLeft.position, {
-      x: heroOffscreenL.x, y: heroOffscreenL.y, z: heroOffscreenL.z,
-      ease: 'none',
-      duration: TIMING.heroSplitOut
-    }, 0.0)
-
-    tl.to(logoRight.position, {
-      x: heroOffscreenR.x, y: heroOffscreenR.y, z: heroOffscreenR.z,
-      ease: 'none',
-      duration: TIMING.heroSplitOut
-    }, 0.0)
-
-    // Hero logo rotates 45deg as it goes off-frame
-    tl.to(pivot.rotation, {
-      z: Math.PI * 0.25,
-      ease: 'power2.out',
-      duration: 0.08,
-    }, TIMING.underOut)
 
     const phaseHandoff = { value: 0 }
     tl.to(phaseHandoff, {
@@ -1990,7 +2171,18 @@ gltfLoader.load(
       opacity: 1,
       ease: 'none',
       duration: 0.015,
+      onStart: () => {
+        // Force lottie resize when the stats section becomes visible.
+        // The SVG renderer may have cached stale dimensions while the
+        // section was at opacity:0 / positioned absolutely.
+        const statsLottie = window.__GENLABS_STATS_LOTTIE__
+        if (statsLottie && typeof statsLottie.resize === 'function') {
+          statsLottie.resize()
+        }
+      },
     }, TIMING.statsIn)
+
+    } // end if (!isMobile()) — convergence + stats timeline tweens
 
     window.__pageTL = tl
     ScrollTrigger?.refresh()
