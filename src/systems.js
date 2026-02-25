@@ -14,7 +14,7 @@ const FEATURE_MODEL_MAP = {
 
 const ASCII = {
   ramp: " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",
-  cellSize: 6,
+  cellSize: 4,
   aspectComp: 0.55,
   fontScale: 1,
   contrast: 1.2,
@@ -60,6 +60,17 @@ function fitModelToTarget(model, targetSize = 3.2) {
   model.position.sub(center)
 }
 
+function getSystemsResponsiveConfig(width) {
+  const isMobile = width <= 767
+  return {
+    isMobile,
+    targetModelSize: isMobile ? 2.45 : 3.2,
+    cameraY: isMobile ? 0.1 : 0.15,
+    cameraZ: isMobile ? 6.8 : 6,
+    asciiCellSize: isMobile ? ASCII.cellSize + 1 : ASCII.cellSize,
+  }
+}
+
 function luminance(r, g, b) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
@@ -73,15 +84,33 @@ function applyGamma(v, gamma) {
 }
 
 export function setupFeaturesTabs() {
-  const canvas = document.querySelector('canvas[data-component="features-canvas"]')
   const list = document.querySelector('[data-component="features"]')
-  if (!canvas || !list) return null
+  if (!list) return null
+
+  const featuresSection = list.closest('.section, .cc-system, .cc-features')
+  const canvas = featuresSection?.querySelector('canvas[data-component="features-canvas"]') ?? null
+  if (!canvas) return null
 
   const ctx = canvas.getContext('2d', { alpha: true })
   if (!ctx) return null
 
   const buttons = Array.from(list.querySelectorAll('.system-tabs_btn'))
   if (!buttons.length) return null
+
+  const setActiveButton = (activeButton) => {
+    buttons.forEach((btn) => {
+      const isActive = btn === activeButton
+      btn.classList.toggle('is-active', isActive)
+      btn.setAttribute('aria-pressed', String(isActive))
+      btn.dataset.active = isActive ? 'true' : 'false'
+
+      const item = btn.closest('.system-tabs_list-item')
+      if (item) {
+        item.classList.toggle('is-active', isActive)
+        item.dataset.active = isActive ? 'true' : 'false'
+      }
+    })
+  }
 
   const glCanvas = document.createElement('canvas')
   const renderer = new THREE.WebGLRenderer({
@@ -216,6 +245,7 @@ export function setupFeaturesTabs() {
     const rect = canvas.getBoundingClientRect()
     width = Math.max(1, Math.floor(rect.width))
     height = Math.max(1, Math.floor(rect.height))
+    const responsive = getSystemsResponsiveConfig(width)
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     canvas.width = Math.max(1, Math.floor(width * dpr))
@@ -226,9 +256,10 @@ export function setupFeaturesTabs() {
     ctx.textBaseline = 'top'
 
     camera.aspect = width / height
+    camera.position.set(0, responsive.cameraY, responsive.cameraZ)
     camera.updateProjectionMatrix()
 
-    cols = clamp(Math.floor(width / ASCII.cellSize), 28, 220)
+    cols = clamp(Math.floor(width / responsive.asciiCellSize), 22, 220)
     cellW = width / cols
     cellH = cellW / ASCII.aspectComp
     rows = clamp(Math.floor(height / cellH), 16, 140)
@@ -242,6 +273,10 @@ export function setupFeaturesTabs() {
 
     renderer.setSize(cols, rows, false)
     bgUniforms.uResolution.value.set(width, height)
+
+    if (activeModel) {
+      fitModelToTarget(activeModel, responsive.targetModelSize)
+    }
   }
 
   resize()
@@ -258,7 +293,7 @@ export function setupFeaturesTabs() {
     const fileName = FEATURE_MODEL_MAP[label]
     if (!fileName) return
 
-    buttons.forEach((btn) => btn.classList.toggle('is-active', btn === button))
+    setActiveButton(button)
 
     const token = ++requestToken
     const modelUrl = resolveFeatureModelUrl(fileName)
@@ -280,7 +315,8 @@ export function setupFeaturesTabs() {
         if (child.material.color) child.material.color.set('#ffffff')
       })
 
-      fitModelToTarget(clone)
+      const responsive = getSystemsResponsiveConfig(width)
+      fitModelToTarget(clone, responsive.targetModelSize)
       modelRoot.clear()
       modelRoot.add(clone)
       activeModel = clone
@@ -290,6 +326,8 @@ export function setupFeaturesTabs() {
   }
 
   buttons.forEach((button) => {
+    button.setAttribute('aria-pressed', 'false')
+    button.dataset.active = 'false'
     button.addEventListener('click', () => {
       void setActiveModel(button)
     })
@@ -299,6 +337,21 @@ export function setupFeaturesTabs() {
   void setActiveModel(defaultButton)
 
   const clock = new THREE.Clock()
+
+  let mouseX = 0
+  let mouseY = 0
+  let targetRotX = 0
+  let targetRotY = 0
+
+  const onMouseMove = (e) => {
+    const rect = canvas.getBoundingClientRect()
+    const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1
+    const ny = ((e.clientY - rect.top) / rect.height) * 2 - 1
+    targetRotY = nx * 0.6
+    targetRotX = -ny * 0.25
+  }
+
+  canvas.addEventListener('mousemove', onMouseMove)
 
   const renderAscii = () => {
     if (!pixelBuffer) return
@@ -360,9 +413,17 @@ export function setupFeaturesTabs() {
       return
     }
 
+    const elapsed = clock.getElapsedTime()
+
     if (SHOW_BACKGROUND_NOISE) {
-      bgUniforms.uTime.value = clock.getElapsedTime()
+      bgUniforms.uTime.value = elapsed
     }
+
+    if (activeModel) {
+      modelRoot.rotation.y += (targetRotY - modelRoot.rotation.y) * 0.08
+      modelRoot.rotation.x += (targetRotX - modelRoot.rotation.x) * 0.08
+    }
+
     renderer.setRenderTarget(target)
     renderer.render(scene, camera)
     renderer.setRenderTarget(null)
@@ -377,6 +438,7 @@ export function setupFeaturesTabs() {
     destroy() {
       resizeObserver.disconnect()
       window.removeEventListener('resize', resize)
+      canvas.removeEventListener('mousemove', onMouseMove)
       target?.dispose()
       renderer.dispose()
     },
