@@ -14,6 +14,7 @@ import { setupFooterAscii } from './footer.js'
 import { setupFeaturesTabs } from './systems.js'
 import { setupViewportSplitTextReveal } from './text.js'
 import { setupNavAnimations } from './nav.js'
+import { setupCustomCursor } from './utils/cursor.js'
 // lottie-web no longer imported — we use Webflow's built-in lottie module
 
 const isWebflowPreviewHost = location.hostname.includes('.webflow.io') || location.hostname.endsWith('webflow.io')
@@ -375,99 +376,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap
 // -----------------------------
 // Cursor overlay (HTML) — desktop only
 // -----------------------------
-let cursor = null
-let mouse = null
-let dotOffset = null
-let smoothX = 0
-let smoothY = 0
-let damping = 0
-
-if (!isMobile()) {
-  cursor = document.createElement('div')
-  cursor.id = 'cursor'
-  cursor.style.cssText = `
-    position: fixed;
-    left: 0; top: 0;
-    width: 10px; height: 10px;
-    border-radius: 999px;
-    background: #5491ff;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-    z-index: 9999;
-    opacity: 0;
-  `
-
-  const cursorLabel = document.createElement('div')
-  cursorLabel.id = 'cursorLabel'
-  cursorLabel.style.cssText = `
-    position: fixed;
-    left: 0; top: 0;
-    padding: 0;
-    color: #1a1a1a;
-    font: 12px/1 Consolas, "Courier New", monospace;
-    letter-spacing: 0.2px;
-    pointer-events: none;
-    z-index: 10000;
-    opacity: 0;
-    white-space: nowrap;
-    text-shadow: 0 1px 0 #ffffff;
-  `
-
-  document.body.appendChild(cursor)
-  document.body.appendChild(cursorLabel)
-
-  mouse = {
-    x: window.innerWidth * 0.5,
-    y: window.innerHeight * 0.5,
-    nx: 0,
-    ny: 0,
-    active: false
-  }
-
-  const updateMouse = (e) => {
-    mouse.x = e.clientX
-    mouse.y = e.clientY
-    mouse.active = true
-
-    cursor.style.opacity = '1'
-    cursorLabel.style.opacity = '1'
-    // Update coordinates display (integers only)
-    cursorLabel.textContent = `${Math.round(mouse.x)}, ${Math.round(mouse.y)}`
-  }
-
-  window.addEventListener('pointermove', updateMouse, { passive: true })
-  window.addEventListener('pointerdown', updateMouse, { passive: true })
-  window.addEventListener('pointerleave', () => {
-    mouse.active = false
-    cursor.style.opacity = '0'
-    cursorLabel.style.opacity = '0'
-  })
-
-  // Damping / offsets
-  dotOffset = { x: 0, y: -14 }     // dot sits above the real cursor
-  const labelOffset = { x: 14, y: -24 }  // label offset from dot
-  smoothX = window.innerWidth * 0.5
-  smoothY = window.innerHeight * 0.5
-  let labelSmoothX = smoothX + labelOffset.x
-  let labelSmoothY = smoothY + labelOffset.y
-  damping = 0.12 // 0.08–0.2 (higher = snappier)
-  
-  // Update label position in animation loop
-  const updateLabelPosition = () => {
-    if (!mouse.active) {
-      requestAnimationFrame(updateLabelPosition)
-      return
-    }
-    const targetLabelX = mouse.x + labelOffset.x
-    const targetLabelY = mouse.y + labelOffset.y
-    labelSmoothX += (targetLabelX - labelSmoothX) * damping
-    labelSmoothY += (targetLabelY - labelSmoothY) * damping
-    cursorLabel.style.left = `${labelSmoothX}px`
-    cursorLabel.style.top = `${labelSmoothY}px`
-    requestAnimationFrame(updateLabelPosition)
-  }
-  requestAnimationFrame(updateLabelPosition)
-}
+const { cursor } = setupCustomCursor() || {}
 
 const NAV_SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 const navScrambleState = new WeakMap()
@@ -2749,24 +2658,6 @@ const tick = () => {
 
   controls.update()
   bgUniforms.uTime.value = elapsedTime
-
-  // Cursor overlay update (damped) — desktop only
-  if (!isMobile() && cursor && mouse?.active) {
-    // target position (dot sits slightly above the real cursor)
-    const targetX = mouse.x + dotOffset.x
-    const targetY = mouse.y + dotOffset.y
-
-    // damping (lerp)
-    smoothX += (targetX - smoothX) * damping
-    smoothY += (targetY - smoothY) * damping
-
-    // dot follows smoothed position
-    cursor.style.left = `${smoothX}px`
-    cursor.style.top = `${smoothY}px`
-
-  }
-
-
 
   if (asciiEnabled) {
     // --- ASCII pipeline ---
