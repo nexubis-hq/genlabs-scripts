@@ -16,6 +16,7 @@ import { setupViewportSplitTextReveal } from './text.js'
 import { setupNavAnimations } from './nav.js'
 import { setupCustomCursor } from './utils/cursor.js'
 import { setupNavScroll } from './utils/nav-scroll.js'
+import { setupStatsGLB } from './sections/stats.js'
 // lottie-web no longer imported — we use Webflow's built-in lottie module
 
 const isWebflowPreviewHost = location.hostname.includes('.webflow.io') || location.hostname.endsWith('webflow.io')
@@ -445,6 +446,7 @@ function setupNavScramble() {
 setupNavScramble()
 setupNavAnimations(gsap)
 setupNavScroll()
+setupStatsGLB()
 
 function setupConvergeHoverCards() {
   const panel = document.querySelector(selectors.panelConverge)
