@@ -397,7 +397,24 @@ if (!isMobile()) {
     opacity: 0;
   `
 
+  const cursorLabel = document.createElement('div')
+  cursorLabel.id = 'cursorLabel'
+  cursorLabel.style.cssText = `
+    position: fixed;
+    left: 0; top: 0;
+    padding: 0;
+    color: #1a1a1a;
+    font: 12px/1 Consolas, "Courier New", monospace;
+    letter-spacing: 0.2px;
+    pointer-events: none;
+    z-index: 10000;
+    opacity: 0;
+    white-space: nowrap;
+    text-shadow: 0 1px 0 #ffffff;
+  `
+
   document.body.appendChild(cursor)
+  document.body.appendChild(cursorLabel)
 
   mouse = {
     x: window.innerWidth * 0.5,
@@ -413,6 +430,9 @@ if (!isMobile()) {
     mouse.active = true
 
     cursor.style.opacity = '1'
+    cursorLabel.style.opacity = '1'
+    // Update coordinates display (integers only)
+    cursorLabel.textContent = `${Math.round(mouse.x)}, ${Math.round(mouse.y)}`
   }
 
   window.addEventListener('pointermove', updateMouse, { passive: true })
@@ -420,13 +440,33 @@ if (!isMobile()) {
   window.addEventListener('pointerleave', () => {
     mouse.active = false
     cursor.style.opacity = '0'
+    cursorLabel.style.opacity = '0'
   })
 
   // Damping / offsets
   dotOffset = { x: 0, y: -14 }     // dot sits above the real cursor
+  const labelOffset = { x: 14, y: -24 }  // label offset from dot
   smoothX = window.innerWidth * 0.5
   smoothY = window.innerHeight * 0.5
+  let labelSmoothX = smoothX + labelOffset.x
+  let labelSmoothY = smoothY + labelOffset.y
   damping = 0.12 // 0.08–0.2 (higher = snappier)
+  
+  // Update label position in animation loop
+  const updateLabelPosition = () => {
+    if (!mouse.active) {
+      requestAnimationFrame(updateLabelPosition)
+      return
+    }
+    const targetLabelX = mouse.x + labelOffset.x
+    const targetLabelY = mouse.y + labelOffset.y
+    labelSmoothX += (targetLabelX - labelSmoothX) * damping
+    labelSmoothY += (targetLabelY - labelSmoothY) * damping
+    cursorLabel.style.left = `${labelSmoothX}px`
+    cursorLabel.style.top = `${labelSmoothY}px`
+    requestAnimationFrame(updateLabelPosition)
+  }
+  requestAnimationFrame(updateLabelPosition)
 }
 
 const NAV_SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -895,12 +935,25 @@ function setupConvergenceVideoScrub() {
     hasMetadata = duration > 0
   }
 
+  let frameCount = 0
   const seek = (progress) => {
     if (!hasMetadata || duration <= 0) return
+    
+    // HOLD: Keep video at 0 for first 15% of section visibility
+    // This gives time for section to fully appear before animation starts
+    const holdThreshold = 0.15
+    const adjustedProgress = progress < holdThreshold ? 0 : (progress - holdThreshold) / (1 - holdThreshold)
+    
     const maxTime = Math.max(0, duration - 0.001)
-    const targetTime = clamp01(progress) * maxTime
+    const targetTime = clamp01(adjustedProgress) * maxTime
     if (Math.abs(targetTime - lastTime) < 1 / 60) return
     lastTime = targetTime
+    
+    // Log every 60 frames (roughly 1 second at 60fps)
+    if (frameCount++ % 60 === 0) {
+      console.log('[Convergence Video Debug] progress:', progress.toFixed(3), 'targetTime:', targetTime.toFixed(2), 'actualCurrentTime:', video.currentTime.toFixed(2))
+    }
+    
     try {
       video.currentTime = targetTime
     } catch {
@@ -956,6 +1009,7 @@ function setupConvergenceVideoScrub() {
       })
     }
   } else {
+    let sectionBecameVisible = false
     const tick = () => {
       if (!window.__pageTL) {
         rafId = requestAnimationFrame(tick)
@@ -963,7 +1017,15 @@ function setupConvergenceVideoScrub() {
       }
       const p = window.__pageTL.progress()
       if (typeof p === 'number') {
-        seek(getConvergenceMediaProgress(p))
+        const mediaProgress = getConvergenceMediaProgress(p)
+        
+        // Log when section first becomes visible
+        if (mediaProgress > 0 && !sectionBecameVisible) {
+          sectionBecameVisible = true
+          console.log('[Convergence Video] Section became visible at stage progress:', p.toFixed(3), 'media progress:', mediaProgress.toFixed(3), 'video time:', video.currentTime.toFixed(2), 'duration:', duration.toFixed(2))
+        }
+        
+        seek(mediaProgress)
       }
       rafId = requestAnimationFrame(tick)
     }
