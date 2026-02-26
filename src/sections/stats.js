@@ -42,8 +42,10 @@ const ASCII_SETTINGS = {
   fontScale: 1,
   contrast: 1.25,
   gamma: 0.85,
-  color: '#fafafa',
-  opacity: 0.9,
+  color: '#ffffff',
+  opacity: 0.8,
+  // Only render in bottom portion (0-1, where 0.4 means start at 40% down)
+  verticalStart: 0.35,
 }
 
 export function setupStatsGLB() {
@@ -125,12 +127,9 @@ export function setupStatsGLB() {
     camera.aspect = width / height
     camera.updateProjectionMatrix()
 
-    // Adjust camera and model for responsive
-    if (isMobile()) {
-      camera.position.set(0, 0, 6)
-    } else {
-      camera.position.set(0, 0, 5)
-    }
+    // Position camera to look down at the model for arc effect
+    camera.position.set(0, 2, 6)
+    camera.lookAt(0, -1, 0)
   }
 
   const loadModel = () => {
@@ -156,6 +155,9 @@ export function setupStatsGLB() {
 
         model.position.sub(center)
         model.scale.setScalar(scale)
+        
+        // Position model lower to create arc effect (only top portion visible)
+        model.position.y = -1.5
 
         // Apply bright material for ASCII visibility
         model.traverse((child) => {
@@ -206,7 +208,7 @@ export function setupStatsGLB() {
     // Read pixels
     renderer.readRenderTargetPixels(target, 0, 0, cols, rows, pixelBuffer)
 
-    // Clear and draw ASCII
+    // Clear and draw ASCII (only in bottom portion for arc effect)
     ctx.clearRect(0, 0, width, height)
     ctx.fillStyle = ASCII_SETTINGS.color
     ctx.globalAlpha = ASCII_SETTINGS.opacity
@@ -219,11 +221,15 @@ export function setupStatsGLB() {
     ctx.save()
     ctx.scale(scaleX, 1)
 
-    for (let y = 0; y < rows; y++) {
+    // Calculate which row to start rendering from (create space at top)
+    const startRow = Math.floor(rows * ASCII_SETTINGS.verticalStart)
+    const visibleRows = rows - startRow
+
+    for (let y = startRow; y < rows; y++) {
       let line = ''
+      const yy = rows - 1 - y
 
       for (let x = 0; x < cols; x++) {
-        const yy = rows - 1 - y
         const i = (yy * cols + x) * 4
         const r = pixelBuffer[i] / 255
         const g = pixelBuffer[i + 1] / 255
@@ -237,7 +243,9 @@ export function setupStatsGLB() {
       }
 
       const lineH = Math.max(cellH, fontPx * 1.04)
-      ctx.fillText(line, 0, y * lineH)
+      // Position relative to visible area
+      const drawY = (y - startRow) * lineH
+      ctx.fillText(line, 0, drawY)
     }
 
     ctx.restore()
