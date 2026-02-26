@@ -24,7 +24,7 @@ export function setupCustomCursor() {
     pointer-events: none;
     z-index: 9999;
     opacity: 0;
-    transition: transform 0.15s ease-out;
+    transition: transform 0.15s ease-out, background-color 0.15s ease-out;
   `
 
   const cursorLabel = document.createElement('div')
@@ -41,6 +41,7 @@ export function setupCustomCursor() {
     opacity: 0;
     white-space: nowrap;
     text-shadow: 0 1px 0 #ffffff;
+    transition: color 0.15s ease-out, text-shadow 0.15s ease-out;
   `
 
   document.body.appendChild(cursor)
@@ -139,6 +140,42 @@ export function setupCustomCursor() {
   document.addEventListener('mouseout', (e) => {
     if (isInteractive(e.target)) {
       shrinkCursor()
+    }
+  })
+
+  // Change cursor color on blue sections
+  const BLUE_SECTIONS = ['.section.cc-stats']
+  
+  const isOverBlueSection = (el) => {
+    if (!el) return false
+    // Check if element or any parent matches blue section selectors
+    return BLUE_SECTIONS.some(selector => {
+      const sections = document.querySelectorAll(selector)
+      return Array.from(sections).some(section => section.contains(el))
+    })
+  }
+  
+  const setBlueSectionColors = () => {
+    cursor.style.background = '#ffffff'
+    cursorLabel.style.color = '#ffffff'
+    cursorLabel.style.textShadow = '0 1px 2px rgba(0,0,0,0.5)'
+  }
+  
+  const setDefaultColors = () => {
+    cursor.style.background = '#5491ff'
+    cursorLabel.style.color = '#1a1a1a'
+    cursorLabel.style.textShadow = '0 1px 0 #ffffff'
+  }
+
+  document.addEventListener('mouseover', (e) => {
+    if (isOverBlueSection(e.target)) {
+      setBlueSectionColors()
+    }
+  })
+
+  document.addEventListener('mouseout', (e) => {
+    if (isOverBlueSection(e.target)) {
+      setDefaultColors()
     }
   })
 
