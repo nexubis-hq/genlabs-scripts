@@ -37,15 +37,15 @@ function applyGamma(v, gamma) {
 
 const ASCII_SETTINGS = {
   ramp: " .'`^\",:;Il!i<>~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",
-  cellSize: 6,
+  cellSize: 8,
   aspectComp: 0.55,
   fontScale: 1,
   contrast: 1.25,
   gamma: 0.85,
   color: '#ffffff',
-  opacity: 0.8,
-  // Only render in bottom portion (0-1, where 0.4 means start at 40% down)
-  verticalStart: 0.35,
+  opacity: 0.75,
+  // Start rendering at 70% down - only bottom 30% shows
+  verticalStart: 0.70,
 }
 
 export function setupStatsGLB() {
@@ -127,9 +127,9 @@ export function setupStatsGLB() {
     camera.aspect = width / height
     camera.updateProjectionMatrix()
 
-    // Position camera to look down at the model for arc effect
-    camera.position.set(0, 2, 6)
-    camera.lookAt(0, -1, 0)
+    // Position camera to look down steeply - only see top of earth arc
+    camera.position.set(0, 4, 8)
+    camera.lookAt(0, -2, 0)
   }
 
   const loadModel = () => {
@@ -156,8 +156,8 @@ export function setupStatsGLB() {
         model.position.sub(center)
         model.scale.setScalar(scale)
         
-        // Position model lower to create arc effect (only top portion visible)
-        model.position.y = -1.5
+        // Position model much lower - only top arc visible at bottom
+        model.position.y = -2.8
 
         // Apply bright material for ASCII visibility
         model.traverse((child) => {
