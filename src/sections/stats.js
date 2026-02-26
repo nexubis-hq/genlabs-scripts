@@ -208,7 +208,7 @@ export function setupStatsGLB() {
     // Read pixels
     renderer.readRenderTargetPixels(target, 0, 0, cols, rows, pixelBuffer)
 
-    // Clear and draw ASCII (only in bottom portion for arc effect)
+    // Clear and draw ASCII (only bottom portion shows arc)
     ctx.clearRect(0, 0, width, height)
     ctx.fillStyle = ASCII_SETTINGS.color
     ctx.globalAlpha = ASCII_SETTINGS.opacity
@@ -221,16 +221,17 @@ export function setupStatsGLB() {
     ctx.save()
     ctx.scale(scaleX, 1)
 
-    // Calculate which row to start rendering from (create space at top)
-    const startRow = Math.floor(rows * ASCII_SETTINGS.verticalStart)
-    const visibleRows = rows - startRow
+    // Only show bottom portion of render (where the arc is)
+    const visibleRows = Math.floor(rows * (1 - ASCII_SETTINGS.verticalStart))
+    const startRow = rows - visibleRows  // Start reading from this row in buffer
 
-    for (let y = startRow; y < rows; y++) {
+    for (let drawY = 0; drawY < visibleRows; drawY++) {
       let line = ''
-      const yy = rows - 1 - y
+      // Map draw position to pixel buffer row (from bottom up)
+      const bufferRow = startRow + (visibleRows - 1 - drawY)
 
       for (let x = 0; x < cols; x++) {
-        const i = (yy * cols + x) * 4
+        const i = (bufferRow * cols + x) * 4
         const r = pixelBuffer[i] / 255
         const g = pixelBuffer[i + 1] / 255
         const b = pixelBuffer[i + 2] / 255
@@ -243,9 +244,7 @@ export function setupStatsGLB() {
       }
 
       const lineH = Math.max(cellH, fontPx * 1.04)
-      // Position relative to visible area
-      const drawY = (y - startRow) * lineH
-      ctx.fillText(line, 0, drawY)
+      ctx.fillText(line, 0, drawY * lineH)
     }
 
     ctx.restore()
