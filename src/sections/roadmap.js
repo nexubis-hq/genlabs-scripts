@@ -20,15 +20,10 @@ export function setupRoadmapAnimations() {
 
   console.log(`[Roadmap] Found ${items.length} items`)
 
-  // Find all text elements to animate (h4 and p with data-component="time-stamp")
-  const textElements = []
-  items.forEach(item => {
-    const headings = item.querySelectorAll('h4')
-    const timestamps = item.querySelectorAll('[data-component="time-stamp"]')
-    textElements.push(...headings, ...timestamps)
-  })
+  // Find timestamp containers to animate (parent of h4 and text)
+  const timestampElements = roadmapGrid.querySelectorAll('[data-component="time-stamp"]')
 
-  console.log(`[Roadmap] Found ${textElements.length} text elements`)
+  console.log(`[Roadmap] Found ${timestampElements.length} timestamp elements`)
 
   // Set initial state for items (blur only, no scale)
   gsap.set(items, {
@@ -36,9 +31,9 @@ export function setupRoadmapAnimations() {
     opacity: 0,
   })
 
-  // Set initial state for text elements
-  gsap.set(textElements, {
-    y: 20,
+  // Set initial state for timestamp containers (translate Y + fade)
+  gsap.set(timestampElements, {
+    y: 30,
     opacity: 0,
   })
 
@@ -67,13 +62,13 @@ export function setupRoadmapAnimations() {
             stagger: 0.1,
           })
 
-          // Animate text elements
-          gsap.to(textElements, {
+          // Animate timestamp containers (slide up + fade)
+          gsap.to(timestampElements, {
             y: 0,
             opacity: 1,
-            duration: 0.5,
-            ease: 'power2.out',
-            stagger: 0.08,
+            duration: 0.6,
+            ease: 'power3.out',
+            stagger: 0.1,
           })
 
           // Animate the line
@@ -99,7 +94,7 @@ export function setupRoadmapAnimations() {
 
   return {
     items,
-    textElements,
+    timestampElements,
     observer,
     destroy() {
       observer.disconnect()
