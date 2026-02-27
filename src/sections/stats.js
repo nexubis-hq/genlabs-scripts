@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { frameObjectToView, createFramingResizeHandler } from '../utils/three-framing.js'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -350,5 +351,125 @@ export function setupMobileStatsGridAnimation() {
     destroy() {
       observer.disconnect()
     },
+  }
+}
+
+/**
+ * Stats Logo Globe - Three.js setup with framing
+ * Loads logo.glb and positions it under the arc overlay
+ */
+export function setupStatsLogoGlobe() {
+  const canvas = document.querySelector('.cc-stats canvas[data-component="stats-globe"]')
+  if (!canvas) {
+    console.log('[Stats Logo Globe] Canvas not found')
+    return null
+  }
+
+  // Setup renderer
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+  })
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+  renderer.setClearColor(0x000000, 0)
+
+  // Setup scene
+  const scene = new THREE.Scene()
+
+  // Setup camera
+  const camera = new THREE.PerspectiveCamera(
+    45,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  )
+
+  // Setup lights
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.0)
+  keyLight.position.set(5, 5, 5)
+  const rimLight = new THREE.DirectionalLight(0xffffff, 0.5)
+  rimLight.position.set(-5, 3, -5)
+  scene.add(ambientLight, keyLight, rimLight)
+
+  // Load and frame the globe
+  let globe = null
+  let controls = null
+  let resizeHandler = null
+
+  const loader = new GLTFLoader()
+  loader.load(
+    resolveAssetUrl('/models/logo.glb'),
+    (gltf) => {
+      globe = gltf.scene
+
+      // Apply white material
+      globe.traverse((child) => {
+        if (child.isMesh) {
+          child.material = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            metalness: 0.1,
+            roughness: 0.4,
+          })
+        }
+      })
+
+      scene.add(globe)
+
+      // Frame the object with 30% vertical offset (sits under arc)
+      const framingData = frameObjectToView(camera, globe, controls, {
+        padding: 1.2,        // 20% padding
+        verticalOffset: 0.30, // 30% down from top (under arc)
+        updateNearFar: true
+      })
+
+      console.log('[Stats Logo Globe] Framed:', framingData)
+
+      // Setup resize handler
+      resizeHandler = createFramingResizeHandler(camera, globe, controls, {
+        padding: 1.2,
+        verticalOffset: 0.30
+      })
+      window.addEventListener('resize', resizeHandler)
+
+      // Start animation loop
+      animate()
+    },
+    undefined,
+    (error) => {
+      console.error('[Stats Logo Globe] Failed to load:', error)
+    }
+  )
+
+  // Animation loop
+  const clock = new THREE.Clock()
+  const animate = () => {
+    if (!canvas.isConnected) {
+      if (resizeHandler) window.removeEventListener('resize', resizeHandler)
+      renderer.dispose()
+      return
+    }
+
+    const elapsed = clock.getElapsedTime()
+
+    // Gentle rotation
+    if (globe) {
+      globe.rotation.y = elapsed * 0.1
+    }
+
+    renderer.render(scene, camera)
+    requestAnimationFrame(animate)
+  }
+
+  return {
+    scene,
+    camera,
+    renderer,
+    destroy() {
+      if (resizeHandler) window.removeEventListener('resize', resizeHandler)
+      renderer.dispose()
+    }
   }
 }
