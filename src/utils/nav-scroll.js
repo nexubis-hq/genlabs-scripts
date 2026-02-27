@@ -1,16 +1,29 @@
 /**
  * Navbar scroll state - adds 'scrolled' class when page is scrolled
- * and 'is-on-blue' class when over blue sections
+ * and color classes when over colored sections (blue, dark, green)
  */
 
-const BLUE_SECTIONS = ['.section.cc-stats']
+const SECTION_CONFIG = {
+  blue: {
+    selectors: ['.section.cc-stats'],
+    className: 'is-on-blue'
+  },
+  dark: {
+    selectors: ['.section.cc-dark', '.section.cc-footer'],
+    className: 'is-on-dark'
+  },
+  green: {
+    selectors: ['.section.cc-green', '.section.cc-ecosystem'],
+    className: 'is-on-green'
+  }
+}
 
-function isOverBlueSection(nav) {
+function isOverSectionType(nav, selectors) {
   if (!nav) return false
   const navRect = nav.getBoundingClientRect()
   const navBottom = navRect.bottom
 
-  return BLUE_SECTIONS.some(selector => {
+  return selectors.some(selector => {
     const sections = document.querySelectorAll(selector)
     return Array.from(sections).some(section => {
       const rect = section.getBoundingClientRect()
@@ -30,9 +43,11 @@ export function setupNavScroll() {
     const isScrolled = window.scrollY > SCROLL_THRESHOLD
     nav.classList.toggle('scrolled', isScrolled)
 
-    // Check if over blue sections
-    const isOnBlue = isOverBlueSection(nav)
-    nav.classList.toggle('is-on-blue', isOnBlue)
+    // Check each section type and toggle appropriate class
+    Object.entries(SECTION_CONFIG).forEach(([type, config]) => {
+      const isOverSection = isOverSectionType(nav, config.selectors)
+      nav.classList.toggle(config.className, isOverSection)
+    })
   }
 
   // Initial check

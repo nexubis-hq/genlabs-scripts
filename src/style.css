@@ -595,3 +595,41 @@ html.js-ready {
 .team_media:hover .team_ascii {
     opacity: 1;
 }
+
+/* Navbar color states based on section backgrounds */
+.nav {
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Blue section - white text */
+.nav.is-on-blue {
+    background: transparent;
+    color: #ffffff;
+}
+
+.nav.is-on-blue .nav-logo,
+.nav.is-on-blue .nav-link {
+    color: #ffffff;
+}
+
+/* Dark section (#1a1a1a) - white text */
+.nav.is-on-dark {
+    background: transparent;
+    color: #ffffff;
+}
+
+.nav.is-on-dark .nav-logo,
+.nav.is-on-dark .nav-link {
+    color: #ffffff;
+}
+
+/* Green section (#9fe2bf) - dark text */
+.nav.is-on-green {
+    background: transparent;
+    color: #1a1a1a;
+}
+
+.nav.is-on-green .nav-logo,
+.nav.is-on-green .nav-link {
+    color: #1a1a1a;
+}
