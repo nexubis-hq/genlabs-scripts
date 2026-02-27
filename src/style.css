@@ -527,11 +527,12 @@ html.js-ready {
 }
 
 .team_image {
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease, filter 0.3s ease;
 }
 
 .team_media:hover .team_image {
     opacity: 0;
+    filter: grayscale(100%);
 }
 
 .team_media:hover .team_ascii {
