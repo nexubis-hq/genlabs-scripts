@@ -2219,15 +2219,16 @@ gltfLoader.load(
       }, TIMING.copySwapStart + 0.06)
     }
 
-    // Under panel exits before convergence sequence
-    tl.to(selectors.panelUnder, {
-      autoAlpha: 0,
-      y: -40,
-      ease: 'none',
-      duration: 0.06
-    }, TIMING.underOut)
-
+    // Under panel exits before convergence sequence (desktop only)
+    // On mobile: keep About section visible so it stays as users scroll
     if (!isMobile()) {
+      tl.to(selectors.panelUnder, {
+        autoAlpha: 0,
+        y: -40,
+        ease: 'none',
+        duration: 0.06
+      }, TIMING.underOut)
+
       tl.set(selectors.panelUnder, {
         autoAlpha: 0,
       }, TIMING.convergeIn)
