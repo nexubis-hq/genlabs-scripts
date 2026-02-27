@@ -599,12 +599,14 @@ html.js-ready {
 /* Navbar color states based on section backgrounds */
 .nav {
     transition: background-color 0.3s ease, color 0.3s ease;
+    --blur-color: var(--_color---neutral--white);
 }
 
 /* Blue section - white text */
 .nav.is-on-blue {
     background: transparent;
     color: #ffffff;
+    --blur-color: var(--_color---primary--sky-bourne);
 }
 
 .nav.is-on-blue .nav-logo,
@@ -616,6 +618,7 @@ html.js-ready {
 .nav.is-on-dark {
     background: transparent;
     color: #ffffff;
+    --blur-color: var(--_color---neutral--gray-matter);
 }
 
 .nav.is-on-dark .nav-logo,
@@ -627,6 +630,7 @@ html.js-ready {
 .nav.is-on-green {
     background: transparent;
     color: #1a1a1a;
+    --blur-color: var(--_color---secondary--matcha);
 }
 
 .nav.is-on-green .nav-logo,

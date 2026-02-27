@@ -9,11 +9,11 @@ const SECTION_CONFIG = {
     className: 'is-on-blue'
   },
   dark: {
-    selectors: ['.section.cc-dark', '.section.cc-footer'],
+    selectors: ['.section.cc-on-grid', '.section.cc-team', '.section.cc-footer'],
     className: 'is-on-dark'
   },
   green: {
-    selectors: ['.section.cc-green', '.section.cc-ecosystem'],
+    selectors: ['.section.cc-roadmap'],
     className: 'is-on-green'
   }
 }

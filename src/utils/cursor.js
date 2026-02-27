@@ -143,8 +143,8 @@ export function setupCustomCursor() {
     }
   })
 
-  // Change cursor color on blue sections
-  const BLUE_SECTIONS = ['.section.cc-stats', '.navbar_menu']
+  // Change cursor color on blue sections and nav
+  const BLUE_SECTIONS = ['.section.cc-stats', '.navbar_menu', '#navbar_menu', '.w-nav-menu', '.nav-menu', '[data-collapse="medium"]']
   
   const isOverBlueSection = (el) => {
     if (!el) return false
