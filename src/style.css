@@ -600,6 +600,8 @@ html.js-ready {
 .nav {
     transition: background-color 0.3s ease, color 0.3s ease;
     --blur-color: var(--_color---neutral--white);
+    --logo-color: #000000;
+    --icon-color: #000000;
 }
 
 /* Blue section - white text */
@@ -607,6 +609,8 @@ html.js-ready {
     background: transparent;
     color: #ffffff;
     --blur-color: var(--_color---primary--sky-bourne);
+    --logo-color: #ffffff;
+    --icon-color: #ffffff;
 }
 
 .nav.is-on-blue .nav-logo,
@@ -619,6 +623,8 @@ html.js-ready {
     background: transparent;
     color: #ffffff;
     --blur-color: var(--_color---neutral--gray-matter);
+    --logo-color: #ffffff;
+    --icon-color: #ffffff;
 }
 
 .nav.is-on-dark .nav-logo,
@@ -631,6 +637,8 @@ html.js-ready {
     background: transparent;
     color: #1a1a1a;
     --blur-color: var(--_color---secondary--matcha);
+    --logo-color: #1a1a1a;
+    --icon-color: #1a1a1a;
 }
 
 .nav.is-on-green .nav-logo,
