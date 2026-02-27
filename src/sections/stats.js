@@ -286,19 +286,13 @@ export function setupStatsGLB() {
 
 /**
  * Mobile stats grid animation
- * Animates stats cards with blur + opacity stagger on scroll
+ * Animates stats cards with blur + opacity stagger when entering viewport
  */
 export function setupMobileStatsGridAnimation() {
   // Only run on mobile
   if (!isMobile()) return null
 
-  const statsSection = document.querySelector('.section.cc-m-stats')
-  if (!statsSection) {
-    console.log('[Mobile Stats Grid] Section .cc-m-stats not found')
-    return null
-  }
-
-  const statsGrid = statsSection.querySelector('[data-component="stats-grid"]')
+  const statsGrid = document.querySelector('[data-component="stats-grid"]')
   if (!statsGrid) {
     console.log('[Mobile Stats Grid] Grid element not found')
     return null
@@ -319,38 +313,42 @@ export function setupMobileStatsGridAnimation() {
     y: 20,
   })
 
-  // Create scroll-triggered animation
-  const trigger = ScrollTrigger.create({
-    trigger: statsSection,
-    start: 'top 80%',
-    end: 'top 40%',
-    scrub: 0.5,
-    onUpdate: (self) => {
-      const progress = self.progress
+  // Use Intersection Observer to trigger animation when in view
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          console.log('[Mobile Stats Grid] In view — animating items')
 
-      statItems.forEach((item, index) => {
-        // Stagger the animation based on index
-        const itemProgress = Math.max(0, Math.min(1, (progress - index * 0.1) / 0.6))
+          // Animate all items with stagger
+          gsap.to(statItems, {
+            filter: 'blur(0px)',
+            opacity: 1,
+            y: 0,
+            duration: 0.6,
+            ease: 'power2.out',
+            stagger: 0.1,
+          })
 
-        gsap.to(item, {
-          filter: `blur(${10 * (1 - itemProgress)}px)`,
-          opacity: itemProgress,
-          y: 20 * (1 - itemProgress),
-          duration: 0.1,
-          ease: 'none',
-          overwrite: true,
-        })
+          // Disconnect after triggering
+          observer.disconnect()
+        }
       })
     },
-  })
+    {
+      threshold: 0.3,
+      rootMargin: '0px 0px -10% 0px',
+    }
+  )
 
-  console.log('[Mobile Stats Grid] Animation setup complete')
+  observer.observe(statsGrid)
+  console.log('[Mobile Stats Grid] Intersection Observer attached')
 
   return {
     items: statItems,
-    trigger,
+    observer,
     destroy() {
-      trigger.kill()
+      observer.disconnect()
     },
   }
 }
