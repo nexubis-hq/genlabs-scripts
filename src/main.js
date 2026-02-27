@@ -16,7 +16,7 @@ import { setupViewportSplitTextReveal } from './text.js'
 import { setupNavAnimations } from './nav.js'
 import { setupCustomCursor } from './utils/cursor.js'
 import { setupNavScroll } from './utils/nav-scroll.js'
-import { setupStatsGLB } from './sections/stats.js'
+import { setupStatsGLB, setupMobileStatsGridAnimation } from './sections/stats.js'
 import { setupRoadmapAnimations } from './sections/roadmap.js'
 // lottie-web no longer imported — we use Webflow's built-in lottie module
 
@@ -451,6 +451,7 @@ setupNavScramble()
 setupNavAnimations(gsap)
 setupNavScroll()
 setupStatsGLB()
+setupMobileStatsGridAnimation()
 setupRoadmapAnimations()
 
 function setupConvergeHoverCards() {

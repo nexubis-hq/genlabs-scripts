@@ -1,5 +1,9 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+
+gsap.registerPlugin(ScrollTrigger)
 
 const MOBILE_BREAKPOINT = 768
 
@@ -278,4 +282,75 @@ export function setupStatsGLB() {
   window.addEventListener('resize', resize)
 
   return { observer, resize }
+}
+
+/**
+ * Mobile stats grid animation
+ * Animates stats cards with blur + opacity stagger on scroll
+ */
+export function setupMobileStatsGridAnimation() {
+  // Only run on mobile
+  if (!isMobile()) return null
+
+  const statsSection = document.querySelector('.section.cc-m-stats')
+  if (!statsSection) {
+    console.log('[Mobile Stats Grid] Section .cc-m-stats not found')
+    return null
+  }
+
+  const statsGrid = statsSection.querySelector('[data-component="stats-grid"]')
+  if (!statsGrid) {
+    console.log('[Mobile Stats Grid] Grid element not found')
+    return null
+  }
+
+  const statItems = statsGrid.querySelectorAll('.col')
+  if (!statItems.length) {
+    console.log('[Mobile Stats Grid] No stat items found')
+    return null
+  }
+
+  console.log(`[Mobile Stats Grid] Found ${statItems.length} items`)
+
+  // Set initial state: blur + invisible
+  gsap.set(statItems, {
+    filter: 'blur(10px)',
+    opacity: 0,
+    y: 20,
+  })
+
+  // Create scroll-triggered animation
+  const trigger = ScrollTrigger.create({
+    trigger: statsSection,
+    start: 'top 80%',
+    end: 'top 40%',
+    scrub: 0.5,
+    onUpdate: (self) => {
+      const progress = self.progress
+
+      statItems.forEach((item, index) => {
+        // Stagger the animation based on index
+        const itemProgress = Math.max(0, Math.min(1, (progress - index * 0.1) / 0.6))
+
+        gsap.to(item, {
+          filter: `blur(${10 * (1 - itemProgress)}px)`,
+          opacity: itemProgress,
+          y: 20 * (1 - itemProgress),
+          duration: 0.1,
+          ease: 'none',
+          overwrite: true,
+        })
+      })
+    },
+  })
+
+  console.log('[Mobile Stats Grid] Animation setup complete')
+
+  return {
+    items: statItems,
+    trigger,
+    destroy() {
+      trigger.kill()
+    },
+  }
 }
