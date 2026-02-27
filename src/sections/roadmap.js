@@ -54,6 +54,33 @@ export function setupRoadmapAnimations() {
     triggers.push(trigger)
   })
 
+  // Animate the ::before line element
+  // Desktop: left-to-right (width), Mobile: top-to-bottom (height)
+  const isMobile = window.innerWidth <= 768
+  const customProp = isMobile ? '--before-height' : '--before-width'
+  
+  // Set initial state
+  gsap.set(roadmapGrid, {
+    [customProp]: '0%'
+  })
+  
+  // Create scroll-triggered animation for the line
+  const lineTrigger = ScrollTrigger.create({
+    trigger: roadmapGrid,
+    start: 'top 80%',
+    end: 'bottom 20%',
+    scrub: 0.5,
+    onUpdate: (self) => {
+      gsap.to(roadmapGrid, {
+        [customProp]: `${self.progress * 100}%`,
+        duration: 0.1,
+        ease: 'none',
+        overwrite: true,
+      })
+    },
+  })
+  triggers.push(lineTrigger)
+
   console.log('[Roadmap] Animations setup complete')
 
   return {

@@ -511,6 +511,37 @@ html.js-ready {
     opacity: 0;
 }
 
+/* Roadmap grid line animation */
+.roadmap_grid {
+    --before-width: 0%;
+    --before-height: 0%;
+}
+
+.roadmap_grid::before {
+    content: '';
+    width: var(--before-width, 0%);
+    height: 1px;
+    border: 1px solid var(--primary--border);
+    background-color: var(--primary--border);
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+}
+
+@media (max-width: 768px) {
+    .roadmap_grid::before {
+        width: 1px;
+        height: var(--before-height, 0%);
+        border: 1px solid var(--primary--border);
+        background-color: var(--primary--border);
+        position: absolute;
+        left: 0;
+        top: 0;
+        transform: none;
+    }
+}
+
 /* Team section hover - show ASCII on hover */
 .team_media {
     position: relative;
