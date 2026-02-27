@@ -510,3 +510,30 @@ html.js-ready {
     pointer-events: none;
     opacity: 0;
 }
+
+/* Team section hover - show ASCII on hover */
+.team_media {
+    position: relative;
+}
+
+.team_ascii {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.team_image {
+    transition: opacity 0.3s ease;
+}
+
+.team_media:hover .team_image {
+    opacity: 0;
+}
+
+.team_media:hover .team_ascii {
+    opacity: 1;
+}
