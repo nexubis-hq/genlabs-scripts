@@ -652,6 +652,19 @@ html.js-ready {
     transition: color 0.3s ease;
 }
 
+/* SVG logo paths */
+.nav-logo svg path[fill="var(--logo-color)"] {
+    fill: var(--logo-color);
+    transition: fill 0.3s ease;
+}
+
+/* SVG icon paths - target the hardcoded blue elements */
+.nav-logo svg g path {
+    fill: var(--icon-color);
+    stroke: var(--icon-color);
+    transition: fill 0.3s ease, stroke 0.3s ease;
+}
+
 .nav-icon,
 .nav-menu-icon {
     color: var(--icon-color);
