@@ -53,28 +53,28 @@ export function setupRoadmapAnimations() {
         if (entry.isIntersecting) {
           console.log('[Roadmap] Grid in view - starting animations')
 
-          // Animate items with blur
+          // Animate items with blur (1.5x duration: 0.9s)
           gsap.to(items, {
             filter: 'blur(0px)',
             opacity: 1,
-            duration: 0.6,
+            duration: 0.9,
             ease: 'power2.out',
-            stagger: 0.1,
+            stagger: 0.15,
           })
 
-          // Animate timestamp containers (slide up + fade)
+          // Animate timestamp containers (slide up + fade) (1.5x duration: 0.9s)
           gsap.to(timestampElements, {
             y: 0,
             opacity: 1,
-            duration: 0.6,
+            duration: 0.9,
             ease: 'power3.out',
-            stagger: 0.1,
+            stagger: 0.15,
           })
 
-          // Animate the line
+          // Animate the line (1.5x duration: 1.8s)
           gsap.to(roadmapGrid, {
             [customProp]: '100%',
-            duration: 1.2,
+            duration: 1.8,
             ease: 'power2.inOut',
           })
 
