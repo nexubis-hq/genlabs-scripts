@@ -49,8 +49,6 @@ const ASCII_SETTINGS = {
   gamma: 0.85,
   color: '#ffffff',
   opacity: 0.75,
-  // Start rendering at 70% down - only bottom 30% shows
-  verticalStart: 0.70,
 }
 
 export function setupStatsGLB() {
@@ -70,6 +68,7 @@ export function setupStatsGLB() {
   if (!ctx) return null
 
   let isLoaded = false
+  let isVisible = false
   let model = null
   let target = null
   let pixelBuffer = null
@@ -94,6 +93,11 @@ export function setupStatsGLB() {
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100)
 
+  // Camera looks slightly downward so the top arc of the globe fills the frame.
+  // Position is updated on resize to account for aspect ratio changes.
+  camera.position.set(0, 6, 14)
+  camera.lookAt(0, 0, 0)
+
   // Lights
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.0)
@@ -102,13 +106,36 @@ export function setupStatsGLB() {
   rimLight.position.set(-2, 3, -4)
   scene.add(ambientLight, keyLight, rimLight)
 
+  // Measure size — walk up the DOM until we find a non-zero rect, then fall
+  // back to window dimensions. The canvas and section may both have 0 height
+  // when inside an opacity:0 sticky container (layout still computed, but
+  // getBoundingClientRect can return 0 for elements with visibility:hidden or
+  // inside a collapsed ancestor). offsetWidth/Height are reliable for layout.
+  const getMeasuredSize = () => {
+    // offsetWidth/Height ignore CSS transforms but respect layout — safe here
+    let el = asciiCanvas
+    let w = 0
+    let h = 0
+    while (el && el !== document.body) {
+      if (el.offsetWidth > 1 && el.offsetHeight > 1) {
+        w = el.offsetWidth
+        h = el.offsetHeight
+        break
+      }
+      el = el.parentElement
+    }
+    if (w < 2) w = window.innerWidth
+    if (h < 2) h = window.innerHeight
+    return { w: Math.max(1, Math.floor(w)), h: Math.max(1, Math.floor(h)) }
+  }
+
   const resize = () => {
-    const canvasRect = asciiCanvas.getBoundingClientRect()
-    const sectionRect = statsSection?.getBoundingClientRect()
-    width = Math.max(1, Math.floor(canvasRect.width || sectionRect?.width || 1))
-    height = Math.max(1, Math.floor(canvasRect.height || sectionRect?.height || 1))
+    const { w, h } = getMeasuredSize()
+    width = w
+    height = h
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    // Only write canvas backing-store attributes — do NOT observe this canvas
     asciiCanvas.width = Math.max(1, Math.floor(width * dpr))
     asciiCanvas.height = Math.max(1, Math.floor(height * dpr))
     asciiCanvas.style.width = `${width}px`
@@ -132,9 +159,13 @@ export function setupStatsGLB() {
     camera.aspect = width / height
     camera.updateProjectionMatrix()
 
-    // Position camera to look down steeply - only see top of earth arc
-    camera.position.set(0, 4, 8)
-    camera.lookAt(0, -2, 0)
+    // Camera sits above and behind, looking well downward so the arc
+    // appears only at the very bottom of the frame.
+    const aspect = width / height
+    const camZ = 6 + aspect * 2
+    const camY = 1 + aspect * 0.3
+    camera.position.set(0, camY, camZ)
+    camera.lookAt(0, -12, 0)
   }
 
   const loadModel = () => {
@@ -150,19 +181,22 @@ export function setupStatsGLB() {
       (gltf) => {
         model = gltf.scene
 
-        // Center and scale
+        // Center the model at origin then scale so its diameter is wider than
+        // the camera frustum — only the top arc will be visible at the bottom
+        // of the frame, spanning edge-to-edge like the lottie arc.
         const box = new THREE.Box3().setFromObject(model)
         const center = box.getCenter(new THREE.Vector3())
         const size = box.getSize(new THREE.Vector3())
         const maxDim = Math.max(size.x, size.y, size.z)
-        const targetSize = isMobile() ? 2.2 : 3.0
+        // Scale wide enough to bleed well off both sides of the frame
+        const targetSize = isMobile() ? 14 : 28
         const scale = targetSize / maxDim
 
         model.position.sub(center)
         model.scale.setScalar(scale)
-        
-        // Position model much lower - only top arc visible at bottom
-        model.position.y = -2.8
+
+        // Sink the model so only the very top sliver of the arc shows
+        model.position.y = -(targetSize * 0.78)
 
         // Apply bright material for ASCII visibility
         model.traverse((child) => {
@@ -192,10 +226,16 @@ export function setupStatsGLB() {
 
   const animate = () => {
     if (!document.body.contains(asciiCanvas)) {
-      observer.disconnect()
-      window.removeEventListener('resize', resize)
+      visibilityObserver.disconnect()
+      window.removeEventListener('resize', onWindowResize)
       target?.dispose()
       renderer.dispose()
+      return
+    }
+
+    // Pause rendering when section is not visible to save GPU
+    if (!isVisible) {
+      requestAnimationFrame(animate)
       return
     }
 
@@ -210,10 +250,10 @@ export function setupStatsGLB() {
     renderer.render(scene, camera)
     renderer.setRenderTarget(null)
 
-    // Read pixels
+    // Read pixels (WebGL buffer is Y-flipped: row 0 = bottom of viewport)
     renderer.readRenderTargetPixels(target, 0, 0, cols, rows, pixelBuffer)
 
-    // Clear and draw ASCII (only bottom portion shows arc)
+    // Clear and draw ASCII
     ctx.clearRect(0, 0, width, height)
     ctx.fillStyle = ASCII_SETTINGS.color
     ctx.globalAlpha = ASCII_SETTINGS.opacity
@@ -226,14 +266,13 @@ export function setupStatsGLB() {
     ctx.save()
     ctx.scale(scaleX, 1)
 
-    // Only show bottom portion of render (where the arc is)
-    const visibleRows = Math.floor(rows * (1 - ASCII_SETTINGS.verticalStart))
-    const startRow = rows - visibleRows  // Start reading from this row in buffer
-
-    for (let drawY = 0; drawY < visibleRows; drawY++) {
+    // Draw all rows — the 3D camera framing keeps the arc at the bottom of frame
+    // WebGL pixel buffer is Y-flipped: buffer row 0 = bottom of the render
+    const lineH = Math.max(cellH, fontPx * 1.04)
+    for (let drawY = 0; drawY < rows; drawY++) {
+      // drawY 0 = top of canvas → buffer row (rows - 1) = top of render
+      const bufferRow = rows - 1 - drawY
       let line = ''
-      // Map draw position to pixel buffer row (from bottom up)
-      const bufferRow = startRow + (visibleRows - 1 - drawY)
 
       for (let x = 0; x < cols; x++) {
         const i = (bufferRow * cols + x) * 4
@@ -248,7 +287,6 @@ export function setupStatsGLB() {
         line += ASCII_SETTINGS.ramp[idx]
       }
 
-      const lineH = Math.max(cellH, fontPx * 1.04)
       ctx.fillText(line, 0, drawY * lineH)
     }
 
@@ -258,31 +296,33 @@ export function setupStatsGLB() {
     requestAnimationFrame(animate)
   }
 
-  // Use Intersection Observer to load when section comes into view
-  const observer = new IntersectionObserver(
+  // Track visibility to pause/resume rendering and trigger initial load
+  const visibilityObserver = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
-        if (entry.isIntersecting && !isLoaded) {
+        isVisible = entry.isIntersecting
+        if (isVisible && !isLoaded) {
           console.log('[Stats ASCII] Section in view - loading model')
           loadModel()
         }
       })
     },
     {
-      threshold: 0.1,
-      rootMargin: '0px 0px -10% 0px',
+      threshold: 0.05,
     }
   )
 
-  observer.observe(statsSection)
+  visibilityObserver.observe(statsSection)
   console.log('[Stats ASCII] Intersection Observer attached to stats section')
 
-  // Handle resize
-  const resizeObserver = new ResizeObserver(resize)
-  resizeObserver.observe(asciiCanvas)
-  window.addEventListener('resize', resize)
+  // Resize on window resize only — do NOT observe the canvas element itself
+  // (that caused an infinite loop since we set canvas.width inside resize())
+  const onWindowResize = () => {
+    resize()
+  }
+  window.addEventListener('resize', onWindowResize)
 
-  return { observer, resize }
+  return { observer: visibilityObserver, resize }
 }
 
 /**
