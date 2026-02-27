@@ -57,13 +57,61 @@ export function setupFeaturesTabs() {
     setActiveButton(defaultButton)
   }
 
+  // Sync Webflow tab state to our buttons (handles autoplay and tab clicks)
+  const syncWithWebflowTabs = () => {
+    const tabs = document.querySelectorAll('.tabs-link')
+    if (!tabs.length) {
+      console.log('[Features Tabs] No Webflow tabs found to sync')
+      return
+    }
+
+    // Find button by tab name (matching text content)
+    const findButtonByTabName = (tabName) => {
+      const normalizedTabName = normalizeLabel(tabName)
+      return buttons.find((btn) => {
+        const btnText = normalizeLabel(btn.textContent || '')
+        return btnText === normalizedTabName
+      })
+    }
+
+    // Watch for Webflow tab changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'aria-selected') {
+          const tab = mutation.target
+          const isActive = tab.getAttribute('aria-selected') === 'true'
+          const tabName = tab.dataset.tabLinkName || tab.textContent
+
+          const matchingButton = findButtonByTabName(tabName)
+          if (matchingButton && isActive) {
+            // Only update if this button isn't already active
+            if (!matchingButton.classList.contains('is-active')) {
+              setActiveButton(matchingButton)
+              console.log(`[Features Tabs] Synced from Webflow: ${tabName}`)
+            }
+          }
+        }
+      })
+    })
+
+    tabs.forEach((tab) => {
+      observer.observe(tab, { attributes: true })
+    })
+
+    console.log(`[Features Tabs] Syncing with ${tabs.length} Webflow tabs`)
+
+    return observer
+  }
+
+  const tabObserver = syncWithWebflowTabs()
+
   console.log('[Features Tabs] Setup complete (GLB loading removed)')
 
   return {
     buttons,
     setActiveButton,
     destroy() {
-      // Cleanup if needed
+      tabObserver?.disconnect()
     },
   }
 }
