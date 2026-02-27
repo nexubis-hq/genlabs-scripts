@@ -542,6 +542,32 @@ html.js-ready {
     }
 }
 
+/* Roadmap dots with scale animation */
+[data-component="time-stamp"] {
+    --dot-size: 12px;
+    --dot-scale: 1;
+}
+
+[data-component="time-stamp"]::before {
+    content: '';
+    width: var(--dot-size);
+    height: var(--dot-size);
+    background: var(--primary--text);
+    position: absolute;
+    top: calc(var(--dot-size) * -0.5);
+    left: calc(var(--dot-size) * -0.5);
+    border-radius: 999vw;
+    transform: scale(var(--dot-scale, 1));
+    transform-origin: center;
+    transition: transform 0.3s ease;
+}
+
+.roadmap_item-top[data-component="time-stamp"]::before {
+    top: auto;
+    bottom: calc(var(--dot-size) * -0.5);
+    left: calc(var(--dot-size) * -0.5);
+}
+
 /* Team section hover - show ASCII on hover */
 .team_media {
     position: relative;

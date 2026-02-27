@@ -31,10 +31,11 @@ export function setupRoadmapAnimations() {
     opacity: 0,
   })
 
-  // Set initial state for timestamp containers (translate Y + fade)
+  // Set initial state for timestamp containers (translate Y + fade + dot scale)
   gsap.set(timestampElements, {
     y: 30,
     opacity: 0,
+    '--dot-scale': 0,
   })
 
   // Determine which custom property to animate based on viewport
@@ -62,10 +63,11 @@ export function setupRoadmapAnimations() {
             stagger: 0.15,
           })
 
-          // Animate timestamp containers (slide up + fade) (1.5x duration: 0.9s)
+          // Animate timestamp containers (slide up + fade + dot scale) (1.5x duration: 0.9s)
           gsap.to(timestampElements, {
             y: 0,
             opacity: 1,
+            '--dot-scale': 1,
             duration: 0.9,
             ease: 'power3.out',
             stagger: 0.15,
