@@ -1,11 +1,8 @@
 import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
-
-gsap.registerPlugin(ScrollTrigger)
 
 /**
  * Roadmap section animations
- * Animates roadmap items from blur + scale to normal on scroll
+ * Animates roadmap items with blur on viewport entry
  */
 
 export function setupRoadmapAnimations() {
@@ -21,73 +18,91 @@ export function setupRoadmapAnimations() {
     return null
   }
 
-  console.log(`[Roadmap] Found ${items.length} items, setting up animations`)
+  console.log(`[Roadmap] Found ${items.length} items`)
 
-  // Set initial state
+  // Find all text elements to animate (h4 and p with data-component="time-stamp")
+  const textElements = []
+  items.forEach(item => {
+    const headings = item.querySelectorAll('h4')
+    const timestamps = item.querySelectorAll('[data-component="time-stamp"]')
+    textElements.push(...headings, ...timestamps)
+  })
+
+  console.log(`[Roadmap] Found ${textElements.length} text elements`)
+
+  // Set initial state for items (blur only, no scale)
   gsap.set(items, {
-    filter: 'blur(8px)',
-    scale: 1.125,
-    opacity: 0.8,
+    filter: 'blur(10px)',
+    opacity: 0,
   })
 
-  // Create animations for each item with stagger
-  const triggers = []
-
-  items.forEach((item, index) => {
-    const trigger = ScrollTrigger.create({
-      trigger: item,
-      start: 'top 85%',
-      end: 'top 50%',
-      scrub: 0.5,
-      onUpdate: (self) => {
-        const progress = self.progress
-        gsap.to(item, {
-          filter: `blur(${8 * (1 - progress)}px)`,
-          scale: 1.125 - (0.125 * progress),
-          opacity: 0.8 + (0.2 * progress),
-          duration: 0.1,
-          ease: 'none',
-          overwrite: true,
-        })
-      },
-    })
-    triggers.push(trigger)
+  // Set initial state for text elements
+  gsap.set(textElements, {
+    y: 20,
+    opacity: 0,
   })
 
-  // Animate the ::before line element
-  // Desktop: left-to-right (width), Mobile: top-to-bottom (height)
+  // Determine which custom property to animate based on viewport
   const isMobile = window.innerWidth <= 768
   const customProp = isMobile ? '--before-height' : '--before-width'
   
-  // Set initial state
+  // Set initial state for the line
   gsap.set(roadmapGrid, {
     [customProp]: '0%'
   })
-  
-  // Create scroll-triggered animation for the line
-  const lineTrigger = ScrollTrigger.create({
-    trigger: roadmapGrid,
-    start: 'top 80%',
-    end: 'bottom 20%',
-    scrub: 0.5,
-    onUpdate: (self) => {
-      gsap.to(roadmapGrid, {
-        [customProp]: `${self.progress * 100}%`,
-        duration: 0.1,
-        ease: 'none',
-        overwrite: true,
+
+  // Use Intersection Observer to trigger when grid enters viewport
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          console.log('[Roadmap] Grid in view - starting animations')
+
+          // Animate items with blur
+          gsap.to(items, {
+            filter: 'blur(0px)',
+            opacity: 1,
+            duration: 0.6,
+            ease: 'power2.out',
+            stagger: 0.1,
+          })
+
+          // Animate text elements
+          gsap.to(textElements, {
+            y: 0,
+            opacity: 1,
+            duration: 0.5,
+            ease: 'power2.out',
+            stagger: 0.08,
+          })
+
+          // Animate the line
+          gsap.to(roadmapGrid, {
+            [customProp]: '100%',
+            duration: 1.2,
+            ease: 'power2.inOut',
+          })
+
+          // Disconnect after triggering
+          observer.disconnect()
+        }
       })
     },
-  })
-  triggers.push(lineTrigger)
+    {
+      threshold: 0.2,
+      rootMargin: '0px 0px -10% 0px',
+    }
+  )
 
-  console.log('[Roadmap] Animations setup complete')
+  observer.observe(roadmapGrid)
+  console.log('[Roadmap] Intersection Observer attached to grid')
 
   return {
     items,
-    triggers,
+    textElements,
+    observer,
     destroy() {
-      triggers.forEach(t => t.kill())
+      observer.disconnect()
     }
   }
 }
