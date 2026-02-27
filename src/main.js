@@ -7,7 +7,7 @@ import GUI from 'lil-gui'
 import { ScrollTrigger as ScrollTriggerModule } from 'gsap/ScrollTrigger'
 import { tabDefinitions, defaultTabId } from './tabs.js'
 import { setupTeamSectionAnimations } from './team.js'
-import { setupFeaturesSectionAnimation } from '../features.js'
+
 import { setupRoadmapAscii } from './roadmap.js'
 import { setupGridAscii, setupGridStackMouseFollow } from './grid.js'
 import { setupFooterAscii } from './footer.js'
@@ -1158,33 +1158,6 @@ function setupExploreButton() {
 
 setupExploreButton()
 setupTeamSectionAnimations({ gsap, ScrollTrigger })
-if (!hasConvergenceVideoSection()) {
-  setupFeaturesSectionAnimation({
-    gsap,
-    canvasSelector: '#features, .cc-convergence canvas',
-    modelUrl: resolveAssetUrl('/models/logo_split.glb'),
-    modelVerticalOffset: 0.14,
-    modelVerticalOffsetMobile: 0.1,
-    stageProgressRange: [0, 1],
-    getStageProgress: () => {
-      const stageProgress = window.__pageTL?.progress()
-      if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
-        return null
-      }
-
-      return stageProgress
-    },
-    getVisibilityProgress: () => {
-      const stageProgress = window.__pageTL?.progress()
-      if (typeof stageProgress !== 'number' || !Number.isFinite(stageProgress)) {
-        return null
-      }
-
-      const underOutStart = window.__GENLABS_STAGE_TIMING__?.underOut ?? 0.58
-      return (stageProgress - underOutStart) / Math.max(0.0001, 1 - underOutStart)
-    },
-  })
-}
 
   // ── Mobile convergence canvas — logo_split.glb merged + rotating on entry ──
   ; (function setupMobileConvergenceCanvas() {
