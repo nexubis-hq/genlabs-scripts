@@ -645,3 +645,16 @@ html.js-ready {
 .nav.is-on-green .nav-link {
     color: #1a1a1a;
 }
+
+/* Apply logo and icon color variables */
+.nav-logo {
+    color: var(--logo-color);
+    transition: color 0.3s ease;
+}
+
+.nav-icon,
+.nav-menu-icon {
+    color: var(--icon-color);
+    fill: var(--icon-color);
+    transition: color 0.3s ease, fill 0.3s ease;
+}
