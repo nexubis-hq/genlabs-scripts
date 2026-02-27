@@ -28,6 +28,9 @@ if (!isWebflowPreviewHost) {
 const gsap = window.gsap || gsapModule
 const ScrollTrigger = window.ScrollTrigger || ScrollTriggerModule
 
+// Prevent FOUC - show content once JS is ready
+document.documentElement.classList.add('js-ready')
+
 if (window.__GENLABS_MAIN_BOOTED__) {
   throw new Error('GEN Labs main.js initialized more than once')
 }

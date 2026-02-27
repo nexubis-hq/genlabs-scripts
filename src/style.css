@@ -6,6 +6,15 @@ body {
     font-family: inherit;
 }
 
+/* Prevent FOUC - hide content until JS loads */
+html {
+    visibility: hidden;
+}
+
+html.js-ready {
+    visibility: visible;
+}
+
 .hero-title {
     font-weight: 400;
 }
