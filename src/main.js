@@ -119,6 +119,7 @@ if (dom.underHighlight) {
 // ── Mobile breakpoint ─────────────────────────────────────────────────────
 const MOBILE_BREAKPOINT = 940
 const isMobile = () => window.innerWidth <= MOBILE_BREAKPOINT
+const isCoarsePointerDevice = () => window.matchMedia('(hover: none), (pointer: coarse)').matches
 
 const getStageStickyRoot = () => {
   return document.querySelector('#grid-stage .grid-stage-sticky')
@@ -2619,6 +2620,23 @@ function renderASCII() {
  * Resize
  */
 window.addEventListener('resize', () => {
+  const previousWidth = sizes.width
+  const previousHeight = sizes.height
+  const nextWidth = window.innerWidth
+  const nextHeight = window.innerHeight
+  const widthDelta = Math.abs(nextWidth - previousWidth)
+  const heightDelta = Math.abs(nextHeight - previousHeight)
+
+  // iOS browser chrome (address/tab bar) can change viewport height while
+  // scrolling, firing resize repeatedly. Refreshing ScrollTrigger on each of
+  // those events can snap the stage timeline backwards.
+  const isLikelyMobileChromeResize = (
+    (isMobile() || isCoarsePointerDevice())
+    && widthDelta < 2
+    && heightDelta > 0
+    && heightDelta < 220
+  )
+
   sizes.width = window.innerWidth
   sizes.height = window.innerHeight
 
@@ -2633,7 +2651,9 @@ window.addEventListener('resize', () => {
 
   window.__refreshConvergeScale?.()
 
-  ScrollTrigger?.refresh()
+  if (!isLikelyMobileChromeResize) {
+    ScrollTrigger?.refresh()
+  }
 
 })
 
