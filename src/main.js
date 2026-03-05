@@ -119,7 +119,6 @@ if (dom.underHighlight) {
 // ── Mobile breakpoint ─────────────────────────────────────────────────────
 const MOBILE_BREAKPOINT = 940
 const isMobile = () => window.innerWidth <= MOBILE_BREAKPOINT
-const isCoarsePointerDevice = () => window.matchMedia('(hover: none), (pointer: coarse)').matches
 
 const getStageStickyRoot = () => {
   return document.querySelector('#grid-stage .grid-stage-sticky')
@@ -2620,16 +2619,6 @@ function renderASCII() {
  * Resize
  */
 window.addEventListener('resize', () => {
-  const tl = window.__pageTL
-  const st = tl?.scrollTrigger || null
-  const progressBeforeResize = st ? st.progress : null
-  const shouldRestoreProgress = Boolean(
-    st
-    && progressBeforeResize !== null
-    && !isMobile()
-    && !isCoarsePointerDevice()
-  )
-
   sizes.width = window.innerWidth
   sizes.height = window.innerHeight
 
@@ -2645,15 +2634,6 @@ window.addEventListener('resize', () => {
   window.__refreshConvergeScale?.()
 
   ScrollTrigger?.refresh()
-
-  if (shouldRestoreProgress) {
-    const targetScroll = st.start + (st.end - st.start) * progressBeforeResize
-    st.scroll(targetScroll)
-
-    const refreshedProgress = st.progress
-    tl.progress(0)
-    tl.progress(refreshedProgress)
-  }
 
 })
 
