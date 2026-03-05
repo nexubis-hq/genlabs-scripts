@@ -1124,7 +1124,7 @@ if (textWords.convergeFinal.length) {
 }
 
 function setupExploreButton() {
-  const exploreButton = document.querySelector('.explore-btn')
+  const exploreButton = document.querySelector('[data-component="explore-btn"], .explore-btn')
   if (!exploreButton) return
 
   const showThreshold = 24
@@ -1145,16 +1145,37 @@ function setupExploreButton() {
     exploreButton.classList.toggle('is-hidden', !shouldShow)
   }
 
+  const getAboutSectionScrollTop = () => {
+    const st = window.__pageTL?.scrollTrigger
+    if (st && Number.isFinite(st.start) && Number.isFinite(st.end) && st.end > st.start) {
+      // About panel starts animating immediately at timeline start.
+      // Move a little into the stage so the transition has clearly started.
+      const aboutStartProgress = 0.20
+      return Math.round(st.start + (st.end - st.start) * aboutStartProgress)
+    }
+
+    const aboutSection = document.querySelector(selectors.panelUnder)
+    if (aboutSection) {
+      return Math.round(aboutSection.getBoundingClientRect().top + window.scrollY)
+    }
+
+    return Math.round(window.scrollY + window.innerHeight * 0.6)
+  }
+
   window.addEventListener('scroll', () => {
     setExploreVisibility(window.scrollY <= showThreshold)
   }, { passive: true })
 
   exploreButton.addEventListener('click', () => {
     setExploreVisibility(false)
-    window.scrollTo({
-      top: Math.round(window.innerHeight * 0.5),
-      behavior: 'smooth',
-    })
+
+    const nextTop = getAboutSectionScrollTop()
+    if (lenis && typeof lenis.scrollTo === 'function') {
+      lenis.scrollTo(nextTop, { duration: 1.1 })
+      return
+    }
+
+    window.scrollTo({ top: nextTop, behavior: 'smooth' })
   })
 
   setExploreVisibility(window.scrollY <= showThreshold, true)
@@ -1852,7 +1873,7 @@ gltfLoader.load(
 
     // Scale to target size (smaller on mobile so model doesn't overlap text)
     const maxDim = Math.max(size.x, size.y, size.z)
-    const targetSize = isMobile() ? 6.5 : 10
+    const targetSize = isMobile() ? 9.75 : 15
     const s = targetSize / maxDim
     pivot.scale.setScalar(s)
 
@@ -1872,8 +1893,9 @@ gltfLoader.load(
 
     const fov = camera.fov * (Math.PI / 180)
     const distance = (maxDim2 / 2) / Math.tan(fov / 2)
+    const heroScreenScale = 1.5
 
-    camera.position.set(0, mobileModelYShift + maxDim2 * 0.2, distance * 1.4)
+    camera.position.set(0, mobileModelYShift + maxDim2 * 0.2, (distance * 1.4) / heroScreenScale)
     camera.near = Math.max(0.01, distance / 100)
     camera.far = distance * 100
     camera.updateProjectionMatrix()

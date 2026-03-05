@@ -258,6 +258,8 @@ export function setupGridStackMouseFollow() {
   const centerIndex = (items.length - 1) * 0.5
   const maxX = 34
   const maxY = 24
+  const isMobileLike = window.matchMedia('(hover: none), (pointer: coarse)').matches || window.innerWidth <= 940
+  const hasSingleItem = items.length === 1
 
   const state = {
     tx: 0,
@@ -267,23 +269,50 @@ export function setupGridStackMouseFollow() {
     active: false,
   }
 
+  const loop = {
+    angle: Math.random() * Math.PI * 2,
+    speed: Math.PI * 2 / 3500,
+    radiusX: maxX * 0.82,
+    radiusY: maxY * 0.78,
+    inView: false,
+  }
+
+  let rafId = 0
+  let observer = null
+
   items.forEach((item) => {
     item.style.willChange = 'transform'
   })
 
+  const influences = items.map((_, i) => {
+    if (hasSingleItem) return 1
+    return (i - centerIndex) * 0.36
+  })
+
   const apply = () => {
+    if (isMobileLike) {
+      const canLoop = loop.inView && document.visibilityState === 'visible'
+      if (canLoop) {
+        loop.angle += loop.speed
+        state.tx = Math.cos(loop.angle) * loop.radiusX
+        state.ty = Math.sin(loop.angle) * loop.radiusY
+      } else {
+        state.tx = 0
+        state.ty = 0
+      }
+    }
+
     state.x += (state.tx - state.x) * 0.14
     state.y += (state.ty - state.y) * 0.14
 
     items.forEach((item, i) => {
-      const offset = i - centerIndex
-      const influence = offset
+      const influence = influences[i]
       const x = state.x * influence * 1.05
       const y = state.y * influence * 0.78
       item.style.transform = `translate3d(${x}px, ${y}px, 0)`
     })
 
-    requestAnimationFrame(apply)
+    rafId = requestAnimationFrame(apply)
   }
 
   const onMove = (event) => {
@@ -305,17 +334,39 @@ export function setupGridStackMouseFollow() {
     state.ty = 0
   }
 
-  section.addEventListener('pointermove', onMove, { passive: true })
-  section.addEventListener('pointerleave', onLeave)
-  window.addEventListener('blur', onLeave)
+  if (!isMobileLike) {
+    section.addEventListener('pointermove', onMove, { passive: true })
+    section.addEventListener('pointerleave', onLeave)
+    window.addEventListener('blur', onLeave)
+  } else {
+    const isNearViewportCenter = () => {
+      const rect = section.getBoundingClientRect()
+      const viewportCenterY = window.innerHeight * 0.5
+      return rect.top <= viewportCenterY && rect.bottom >= viewportCenterY
+    }
 
-  requestAnimationFrame(apply)
+    const rect = section.getBoundingClientRect()
+    loop.inView = rect.bottom > 0 && rect.top < window.innerHeight && isNearViewportCenter()
+
+    observer = new IntersectionObserver((entries) => {
+      loop.inView = Boolean(entries[0]?.isIntersecting)
+    }, {
+      threshold: 0,
+      rootMargin: '-40% 0px -40% 0px',
+    })
+
+    observer.observe(section)
+  }
+
+  rafId = requestAnimationFrame(apply)
 
   return {
     destroy() {
+      if (rafId) cancelAnimationFrame(rafId)
       section.removeEventListener('pointermove', onMove)
       section.removeEventListener('pointerleave', onLeave)
       window.removeEventListener('blur', onLeave)
+      observer?.disconnect()
     },
   }
 }
