@@ -44,6 +44,7 @@ window.__GENLABS_MAIN_BOOTED__ = true
 
 if (ScrollTrigger) {
   gsap.registerPlugin(ScrollTrigger)
+  ScrollTrigger.config({ ignoreMobileResize: true })
 }
 
 let lenis = null
@@ -118,6 +119,7 @@ if (dom.underHighlight) {
 // ── Mobile breakpoint ─────────────────────────────────────────────────────
 const MOBILE_BREAKPOINT = 940
 const isMobile = () => window.innerWidth <= MOBILE_BREAKPOINT
+const isCoarsePointerDevice = () => window.matchMedia('(hover: none), (pointer: coarse)').matches
 
 const getStageStickyRoot = () => {
   return document.querySelector('#grid-stage .grid-stage-sticky')
@@ -2621,6 +2623,12 @@ window.addEventListener('resize', () => {
   const tl = window.__pageTL
   const st = tl?.scrollTrigger || null
   const progressBeforeResize = st ? st.progress : null
+  const shouldRestoreProgress = Boolean(
+    st
+    && progressBeforeResize !== null
+    && !isMobile()
+    && !isCoarsePointerDevice()
+  )
 
   sizes.width = window.innerWidth
   sizes.height = window.innerHeight
@@ -2638,7 +2646,7 @@ window.addEventListener('resize', () => {
 
   ScrollTrigger?.refresh()
 
-  if (st && progressBeforeResize !== null) {
+  if (shouldRestoreProgress) {
     const targetScroll = st.start + (st.end - st.start) * progressBeforeResize
     st.scroll(targetScroll)
 
