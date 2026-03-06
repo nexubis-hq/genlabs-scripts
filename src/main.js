@@ -74,8 +74,6 @@ function setupLenis() {
   window.__GENLABS_LENIS__ = lenis
 }
 
-setupLenis()
-
 const moduleUrl = new URL(import.meta.url)
 
 // When served from jsDelivr the script URL is:
@@ -120,6 +118,11 @@ if (dom.underHighlight) {
 const MOBILE_BREAKPOINT = 940
 const isMobile = () => window.innerWidth <= MOBILE_BREAKPOINT
 const isCoarsePointerDevice = () => window.matchMedia('(hover: none), (pointer: coarse)').matches
+
+// Initialize Lenis only on desktop to avoid scroll conflicts on mobile Safari
+if (!isMobile() && !isCoarsePointerDevice()) {
+  setupLenis()
+}
 
 const getStageStickyRoot = () => {
   return document.querySelector('#grid-stage .grid-stage-sticky')
