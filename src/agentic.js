@@ -2250,7 +2250,7 @@ gltfLoader.load(
       }, TIMING.copySwapStart + 0.06)
     }
 
-    // Under panel exits before convergence sequence (desktop only)
+    // Under panel exits (desktop only)
     // On mobile: keep About section visible so it stays as users scroll
     if (!isMobile()) {
       tl.to(selectors.panelUnder, {
@@ -2259,10 +2259,8 @@ gltfLoader.load(
         ease: 'none',
         duration: 0.06
       }, TIMING.underOut)
-
-      tl.set(selectors.panelUnder, {
-        autoAlpha: 0,
-      }, TIMING.convergeIn)
+      // No tl.set at convergeIn — convergeIn is 2 in agentic.js which would
+      // stretch totalDuration to 2s and create ~111vh of dead scroll space.
     }
 
     // Logo halves split outward during the hero phase (runs on all breakpoints)
