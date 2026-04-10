@@ -2299,6 +2299,16 @@ gltfLoader.load(
     // On mobile these sections scroll normally and don't need scroll-driven animation.
     if (!isMobile()) {
 
+      // Fade the ASCII canvas out as the about section exits. Without the
+      // convergence section filling the gap, the 3D scene is empty and the
+      // canvas would show its white background. Fading it out here prevents
+      // the white flash and lets the stats HTML (or next section) take over.
+      tl.to(asciiCanvas, {
+        opacity: 0,
+        ease: 'none',
+        duration: 0.02,
+      }, TIMING.underOut)
+
       if (hasStickyStatsSection) {
         tl.to(selectors.panelStats, {
           opacity: 1,
