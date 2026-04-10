@@ -13,9 +13,16 @@ export default defineConfig({
   // Remove font imports if they're on Webflow
   build: {
     rollupOptions: {
+      input: {
+        index: 'index.html',
+        agentic: 'src/agentic.js',
+      },
       external: ['@fontsource/stack-sans-notch'],
       output: {
-        entryFileNames: 'assets/index.js',
+        entryFileNames: (chunkInfo) => {
+          if (chunkInfo.name === 'agentic') return 'assets/agentic.js'
+          return 'assets/index.js'
+        },
         chunkFileNames: 'assets/[name].js',
         assetFileNames: 'assets/[name][extname]',
       }
