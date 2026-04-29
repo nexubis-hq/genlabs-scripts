@@ -13,7 +13,7 @@ const SECTION_CONFIG = {
     className: 'is-on-dark'
   },
   green: {
-    selectors: ['.section.cc-roadmap', '.section.cc-resources'],
+    selectors: ['.section.cc-roadmap'],
     className: 'is-on-green'
   }
 }
@@ -33,9 +33,21 @@ function isOverSectionType(nav, selectors) {
   })
 }
 
+function findNav() {
+  return document.querySelector('.nav')
+    || document.querySelector('.navbar')
+    || document.querySelector('.w-nav')
+    || document.querySelector('[role="navigation"]')
+}
+
 export function setupNavScroll() {
-  const nav = document.querySelector('.nav')
-  if (!nav) return
+  const nav = findNav()
+  if (!nav) {
+    console.warn('[nav-scroll] No nav found. Tried: .nav, .navbar, .w-nav, [role="navigation"]')
+    return
+  }
+
+  console.log('[nav-scroll] Found nav:', nav.className)
 
   const SCROLL_THRESHOLD = 20
 
@@ -50,8 +62,12 @@ export function setupNavScroll() {
     })
   }
 
-  // Initial check
-  updateScrollState()
+  // Initial check — delay slightly so Webflow/CMS layout is settled
+  requestAnimationFrame(() => {
+    updateScrollState()
+    // Double-check after a short delay for any late-rendered CMS content
+    setTimeout(updateScrollState, 100)
+  })
 
   // Listen for scroll events
   window.addEventListener('scroll', updateScrollState, { passive: true })
