@@ -5,7 +5,7 @@
 
 const SECTION_CONFIG = {
   blue: {
-    selectors: ['.section.cc-stats'],
+    selectors: ['.section.cc-stats', '.section.cc-resources'],
     className: 'is-on-blue'
   },
   dark: {
@@ -13,7 +13,7 @@ const SECTION_CONFIG = {
     className: 'is-on-dark'
   },
   green: {
-    selectors: ['.section.cc-roadmap'],
+    selectors: ['.section.cc-roadmap', '.section.cc-resources'],
     className: 'is-on-green'
   }
 }
