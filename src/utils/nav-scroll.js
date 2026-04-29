@@ -18,17 +18,24 @@ const SECTION_CONFIG = {
   }
 }
 
-function isOverSectionType(nav, selectors) {
+function isOverSectionType(nav, selectors, type = '') {
   if (!nav) return false
   const navRect = nav.getBoundingClientRect()
   const navBottom = navRect.bottom
 
   return selectors.some(selector => {
     const sections = document.querySelectorAll(selector)
+    if (type && sections.length) {
+      console.log(`[nav-scroll] ${type}: found ${sections.length} for "${selector}"`)
+    }
     return Array.from(sections).some(section => {
       const rect = section.getBoundingClientRect()
-      // Check if nav overlaps with this section
-      return navBottom > rect.top && navRect.top < rect.bottom
+      // Check if nav overlaps (or touches) this section
+      const overlaps = navBottom >= rect.top && navRect.top <= rect.bottom
+      if (type) {
+        console.log(`[nav-scroll] ${type}: overlap=${overlaps} | nav[${Math.round(navRect.top)}-${Math.round(navBottom)}] vs section[${Math.round(rect.top)}-${Math.round(rect.bottom)}]`)
+      }
+      return overlaps
     })
   })
 }
@@ -57,7 +64,7 @@ export function setupNavScroll() {
 
     // Check each section type and toggle appropriate class
     Object.entries(SECTION_CONFIG).forEach(([type, config]) => {
-      const isOverSection = isOverSectionType(nav, config.selectors)
+      const isOverSection = isOverSectionType(nav, config.selectors, type)
       nav.classList.toggle(config.className, isOverSection)
     })
   }
